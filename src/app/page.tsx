@@ -1,13 +1,17 @@
 "use client";
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = formRef.current;
     if (!form) return;
@@ -17,7 +21,19 @@ export default function LoginPage() {
       form.reportValidity();
       return;
     }
-    router.push("/dashboard");
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setSuccess("Login exitoso");
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 800);
+    }
   }
 
   return (
@@ -56,7 +72,11 @@ export default function LoginPage() {
             placeholder="••••••••"
           />
         </div>
-        <Button type="submit" className="w-full bg-cyan-400/80 text-stone-900 font-semibold shadow-[0_2px_24px_0_rgba(34,211,238,0.4)] hover:bg-cyan-300/90 hover:shadow-cyan-400/60 transition-all border-2 border-cyan-300/40 backdrop-blur-sm hover:cursor-pointer">Entrar</Button>
+        <Button type="submit" className="w-full bg-cyan-400/80 text-stone-900 font-semibold shadow-[0_2px_24px_0_rgba(34,211,238,0.4)] hover:bg-cyan-300/90 hover:shadow-cyan-400/60 transition-all border-2 border-cyan-300/40 backdrop-blur-sm hover:cursor-pointer" disabled={loading}>
+          {loading ? "Ingresando..." : "Entrar"}
+        </Button>
+        {error && <div className="text-pink-400 text-sm mt-2 text-center">{error}</div>}
+        {success && <div className="text-green-400 text-sm mt-2 text-center">{success}</div>}
       </form>
     </div>
   );

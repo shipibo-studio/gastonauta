@@ -2,7 +2,19 @@
 import { Sidebar } from "../components/Sidebar";
 import { SupabaseStatusCard } from "./SupabaseStatusCard";
 
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+
 export default function DashboardPage() {
+  const router = useRouter();
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.push("/login");
+      }
+    });
+  }, [router]);
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans">
       {/* Sidebar */}

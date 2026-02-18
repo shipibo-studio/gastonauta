@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -16,12 +18,13 @@ const sidebarItems = [
   { label: "Mis gastos", icon: List, path: "/dashboard/gastos" },
   { label: "Log", icon: ScrollText, path: "/dashboard/log" },
   { label: "Configuración", icon: Settings, path: "/dashboard/settings" },
-  { label: "Cerrar sesión", icon: LogOut, path: "/logout" },
+  { label: "Cerrar sesión", icon: LogOut, path: null },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   // Forzar collapsed en mobile
   useEffect(() => {
@@ -92,6 +95,32 @@ export function Sidebar() {
         {sidebarItems.slice(3).map((item) => {
           const LucideIcon = item.icon;
           const isActive = pathname === item.path;
+          if (item.label === "Cerrar sesión") {
+            return (
+              <div key={item.label} className="relative group">
+                <button
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors font-sans text-base w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 hover:cursor-pointer ${collapsed ? "justify-center px-0" : ""} hover:bg-pink-400/10 hover:text-pink-400`}
+                  tabIndex={0}
+                  type="button"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    router.push("/");
+                  }}
+                >
+                  <Icon as={LucideIcon} className="w-5 h-5 shrink-0" />
+                  <span className={`${collapsed ? "sr-only" : ""}`}>{item.label}</span>
+                </button>
+                {collapsed && (
+                  <span
+                    className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 -translate-y-1/2 whitespace-nowrap rounded bg-stone-900/90 px-3 py-1 text-sm font-sans text-stone-100 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 border border-stone-700 backdrop-blur-xl"
+                    role="tooltip"
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </div>
+            );
+          }
           return (
             <div key={item.label} className="relative group">
               <button
