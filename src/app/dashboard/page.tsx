@@ -1,5 +1,6 @@
 "use client";
 import { Sidebar } from "../components/Sidebar";
+import { SupabaseStatusCard } from "./SupabaseStatusCard";
 
 export default function DashboardPage() {
   return (
@@ -19,6 +20,8 @@ export default function DashboardPage() {
             <span className="text-stone-200 font-sans mb-2">Gráfico 2</span>
             <div className="w-full h-32 bg-pink-400/10 rounded-lg border border-pink-400/20 flex items-center justify-center text-pink-400 font-bold text-lg animate-pulse">[Placeholder]</div>
           </section>
+          {/* Supabase status card */}
+          <SupabaseStatusCard />
         </div>
       </main>
     </div>
