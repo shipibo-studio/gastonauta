@@ -1,65 +1,41 @@
-import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import React from "react";
 
-export default function Home() {
+export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans relative overflow-hidden">
+      {/* Neon glow background accent */}
+      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
+        <div className="h-96 w-96 rounded-full bg-cyan-400/20 blur-3xl opacity-70 animate-pulse shadow-[0_0_80px_20px_rgba(34,211,238,0.25)]" />
+      </div>
+      <form className="relative z-10 w-full max-w-sm rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl shadow-2xl p-10 flex flex-col gap-8 border border-stone-300/20 dark:border-stone-700/40 font-sans transition-all">
+        <h1 className="text-3xl font-semibold text-stone-100 text-center font-serif drop-shadow-[0_2px_16px_rgba(34,211,238,0.7)] tracking-tight">Iniciar sesión</h1>
+        <div className="flex flex-col gap-4">
+          <label htmlFor="email" className="text-stone-200 text-sm font-medium">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            className="rounded-lg border border-stone-300/30 bg-stone-100/40 dark:bg-stone-900/60 px-4 py-2 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition shadow-inner backdrop-blur-md"
+            placeholder="tucorreo@email.com"
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="flex flex-col gap-4">
+          <label htmlFor="password" className="text-stone-200 text-sm font-medium">Contraseña</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            className="rounded-lg border border-stone-300/30 bg-stone-100/40 dark:bg-stone-900/60 px-4 py-2 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition shadow-inner backdrop-blur-md"
+            placeholder="••••••••"
+          />
         </div>
-      </main>
+        <Button type="submit" className="w-full bg-cyan-400/80 text-stone-900 font-semibold shadow-[0_2px_24px_0_rgba(34,211,238,0.4)] hover:bg-cyan-300/90 hover:shadow-cyan-400/60 transition-all border-2 border-cyan-300/40 backdrop-blur-sm">Entrar</Button>
+      </form>
     </div>
   );
 }
