@@ -9,7 +9,7 @@ export default function LoginPage() {
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [fadeOut, setFadeOut] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -23,16 +23,15 @@ export default function LoginPage() {
     }
     setLoading(true);
     setError("");
-    setSuccess("");
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       setError(error.message);
     } else {
-      setSuccess("Login exitoso");
+      setFadeOut(true);
       setTimeout(() => {
         router.push("/dashboard");
-      }, 800);
+      }, 600);
     }
   }
 
@@ -44,7 +43,7 @@ export default function LoginPage() {
       <form
         ref={formRef}
         onSubmit={handleSubmit}
-        className="relative z-10 w-full max-w-sm rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl shadow-2xl p-10 flex flex-col gap-8 border border-stone-300/20 dark:border-stone-700/40 font-sans transition-all"
+        className={`relative z-10 w-full max-w-sm rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl shadow-2xl p-10 flex flex-col gap-8 border border-stone-300/20 dark:border-stone-700/40 font-sans transition-all duration-500 ${fadeOut ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100"}`}
         autoComplete="off"
       >
         <h1 className="text-3xl font-semibold text-stone-100 text-center font-serif drop-shadow-[0_2px_16px_rgba(34,211,238,0.7)] tracking-tight">Iniciar sesión</h1>
@@ -76,7 +75,6 @@ export default function LoginPage() {
           {loading ? "Ingresando..." : "Entrar"}
         </Button>
         {error && <div className="text-pink-400 text-sm mt-2 text-center">{error}</div>}
-        {success && <div className="text-green-400 text-sm mt-2 text-center">{success}</div>}
       </form>
     </div>
   );
