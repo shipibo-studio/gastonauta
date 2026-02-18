@@ -10,8 +10,10 @@
 - **Color scheme:**
   - Base en tonos `stone` de Tailwind para fondos, bordes y textos principales.
   - Acentos neón solo para resaltar acciones o elementos clave.
-- **Accesibilidad:**
+
+- **Accesibilidad y UX:**
   - Mantén buen contraste entre texto y fondo.
   - Usa `focus:ring` y `focus:border` en inputs y botones.
+  - Todos los links y botones deben mostrar `cursor-pointer` al hacer hover para indicar interactividad.
 
 > Aplica estos lineamientos en todas las vistas y componentes para mantener coherencia visual y experiencia moderna.
