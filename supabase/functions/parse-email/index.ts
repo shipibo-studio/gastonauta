@@ -80,8 +80,9 @@ function parseBancoEstadoEmail(bodyPlain: string): ParsedTransaction {
 
   if (!bodyPlain) return result
 
-  // Parse customer name
-  const nameMatch = bodyPlain.match(/Estimado\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+)/i)
+  // Parse customer name - match only first line after "Estimado"
+  // Only capture up to the first newline, not the entire rest of the email
+  const nameMatch = bodyPlain.match(/^Estimado\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/m)
   if (nameMatch) {
     result.customer_name = nameMatch[1].trim()
   }
