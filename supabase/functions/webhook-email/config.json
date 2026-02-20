@@ -1,9 +1,0 @@
-{
-  "name": "webhook-email",
-  "version": "1.0.0",
-  "description": "Receives Banco de Chile email webhooks and stores parsed transactions",
-  "main": "index.ts",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.0.0"
-  }
-}
