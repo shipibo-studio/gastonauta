@@ -12,6 +12,102 @@ const corsHeaders = {
 // Set this in Supabase secrets: supabase secrets set WEBHOOK_BEARER_TOKEN=your-secret-token
 const BEARER_TOKEN = Deno.env.get('WEBHOOK_BEARER_TOKEN') || 'chg-webhook-2026-secure-token'
 
+// Resend configuration for email notifications
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
+const NOTIFICATION_EMAIL = Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@gastonauta.com'
+
+// Email notification function using Resend API directly
+async function sendNotificationEmail(
+  type: 'success' | 'error',
+  data: {
+    messageId?: string
+    merchant?: string | null
+    amount?: number | null
+    error?: string
+  }
+) {
+  if (!RESEND_API_KEY) {
+    console.log('RESEND_API_KEY not configured, skipping notification')
+    return
+  }
+
+  const isSuccess = type === 'success'
+  const subject = isSuccess 
+    ? `✅ Email guardado exitosamente - ${data.merchant || 'Transacción'}` 
+    : `❌ Error al guardar email`
+
+  const htmlContent = isSuccess
+    ? `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #10b981;">✅ Email guardado exitosamente</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Message ID</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.messageId || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Comercio</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.merchant || 'No detectado'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Monto</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${new Date().toLocaleString('es-CL')}</td>
+          </tr>
+        </table>
+        <p style="color: #6b7280; margin-top: 20px;">
+          Este es un notification automático de <strong>Gastonauta</strong>
+        </p>
+      </div>
+    `
+    : `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ef4444;">❌ Error al guardar email</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Message ID</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.messageId || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Error</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb; color: #ef4444;">${data.error || 'Error desconocido'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${new Date().toLocaleString('es-CL')}</td>
+          </tr>
+        </table>
+        <p style="color: #6b7280; margin-top: 20px;">
+          Este es un notification automático de <strong>Gastonauta</strong>
+        </p>
+      </div>
+    `
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from: 'Gastonauta <onboarding@resend.dev>',
+        to: [NOTIFICATION_EMAIL],
+        subject: subject,
+        html: htmlContent,
+      }),
+    })
+    
+    const result = await response.json()
+    console.log('Notification email sent:', result)
+  } catch (error) {
+    console.error('Failed to send notification email:', error)
+  }
+}
+
 interface EmailData {
   date?: string
   from_name?: string
@@ -183,11 +279,25 @@ Deno.serve(async (req) => {
         )
       }
       console.error('Database error:', error)
+      
+      // Send error notification
+      await sendNotificationEmail('error', {
+        messageId: emailData.message_id,
+        error: error.message,
+      })
+      
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Send success notification
+    await sendNotificationEmail('success', {
+      messageId: emailData.message_id,
+      merchant: parsedData.merchant,
+      amount: parsedData.amount,
+    })
 
     return new Response(
       JSON.stringify({ 
