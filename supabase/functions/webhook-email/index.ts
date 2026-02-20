@@ -1,5 +1,5 @@
 // Supabase Edge Function: webhook-email
-// Receives Banco de Chile email webhooks and stores parsed transactions
+// Receives email webhooks, uses parse-email to extract transaction data, and stores in Supabase
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -9,7 +9,6 @@ const corsHeaders = {
 }
 
 // Bearer token for webhook authentication
-// Set this in Supabase secrets: supabase secrets set WEBHOOK_BEARER_TOKEN=your-secret-token
 const BEARER_TOKEN = Deno.env.get('WEBHOOK_BEARER_TOKEN') || 'chg-webhook-2026-secure-token'
 
 // Resend configuration for email notifications
@@ -51,7 +50,7 @@ async function sendNotificationEmail(
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Monto</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `$${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha</strong></td>
@@ -119,60 +118,6 @@ interface EmailData {
   body_html?: string
 }
 
-function parseBancoChileEmail(bodyPlain: string): {
-  customer_name: string | null
-  amount: number | null
-  account_last4: string | null
-  merchant: string | null
-  transaction_date: string | null
-} {
-  const result = {
-    customer_name: null as string | null,
-    amount: null as number | null,
-    account_last4: null as string | null,
-    merchant: null as string | null,
-    transaction_date: null as string | null,
-  }
-
-  if (!bodyPlain) return result
-
-  // Parse customer name (first line after "Banco de Chile\n\n")
-  const nameMatch = bodyPlain.match(/^Banco de Chile\s*\n\n([^:\n]+):/m)
-  if (nameMatch) {
-    result.customer_name = nameMatch[1].trim()
-  }
-
-  // Parse amount: "compra por $4.380" or "compra por $123.456"
-  const amountMatch = bodyPlain.match(/compra por \$([\d.]+)/i)
-  if (amountMatch) {
-    const amountStr = amountMatch[1].replace(/\./g, '').replace(',', '.')
-    result.amount = parseFloat(amountStr)
-  }
-
-  // Parse account: "Cuenta ****5150"
-  const accountMatch = bodyPlain.match(/Cuenta\s*\*\*\*\*(\d{4})/i)
-  if (accountMatch) {
-    result.account_last4 = accountMatch[1]
-  }
-
-  // Parse merchant: "en SHELL.PATAGONI 75"
-  const merchantMatch = bodyPlain.match(/en\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s.\d]+?)\s+el/i)
-  if (merchantMatch) {
-    result.merchant = merchantMatch[1].trim()
-  }
-
-  // Parse transaction date: "el 18/02/2026 17:57"
-  const dateMatch = bodyPlain.match(/el\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/i)
-  if (dateMatch) {
-    const [day, month, year] = dateMatch[1].split('/')
-    const time = dateMatch[2]
-    // Convert to ISO format with timezone
-    result.transaction_date = `${year}-${month}-${day}T${time}:00-03:00`
-  }
-
-  return result
-}
-
 function parseEmailDate(dateStr: string | undefined): string | null {
   if (!dateStr) return null
   
@@ -183,6 +128,47 @@ function parseEmailDate(dateStr: string | undefined): string | null {
   } catch {
     return null
   }
+}
+
+// Call the parse-email Edge Function to extract transaction data
+async function parseEmailWithFunction(
+  supabaseUrl: string,
+  serviceKey: string,
+  emailData: EmailData
+): Promise<{
+  customer_name: string | null
+  amount: number | null
+  account_last4: string | null
+  merchant: string | null
+  transaction_date: string | null
+  sender_bank: string | null
+  email_type: string | null
+}> {
+  const parseUrl = `${supabaseUrl}/functions/v1/parse-email`
+  const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4d2pibHV2eGV1c3h0cHN0dnNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MzU5MDQsImV4cCI6MjA4NzAxMTkwNH0.R_EG2M_mkupDymZzcmj1HWOScHk_12V9WqML0uy053w'
+  
+  const response = await fetch(parseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${anonKey}`,
+      'apikey': anonKey,
+    },
+    body: JSON.stringify({
+      from_email: emailData.from_email,
+      subject: emailData.subject,
+      body_plain: emailData.body_plain,
+      body_raw: emailData.body_raw,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Parse function failed: ${error}`)
+  }
+
+  const result = await response.json()
+  return result.parsed
 }
 
 Deno.serve(async (req) => {
@@ -203,7 +189,6 @@ Deno.serve(async (req) => {
     const expectedToken = Deno.env.get('WEBHOOK_BEARER_TOKEN')
     
     // Allow custom bearer token OR Supabase JWT (anon key)
-    // For production, prefer using a custom token set in Supabase secrets
     if (expectedToken && token === expectedToken) {
       // Valid custom bearer token - OK
     } else if (!token?.startsWith('eyJ')) {
@@ -233,8 +218,12 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Parse transaction data from email body
-    const parsedData = parseBancoChileEmail(emailData.body_plain || emailData.body_raw || '')
+    // Initialize Supabase client with service role (for server-side operations)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    
+    // Call parse-email function to extract transaction data
+    const parsedData = await parseEmailWithFunction(supabaseUrl, supabaseServiceKey, emailData)
 
     // Prepare transaction record
     const transactionRecord = {
@@ -251,13 +240,10 @@ Deno.serve(async (req) => {
       account_last4: parsedData.account_last4,
       merchant: parsedData.merchant,
       transaction_date: parsedData.transaction_date,
-      sender_bank: 'Banco de Chile',
-      email_type: 'transaction_notification',
+      sender_bank: parsedData.sender_bank,
+      email_type: parsedData.email_type,
     }
 
-    // Initialize Supabase client with service role (for server-side operations)
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Insert into transactions table (upsert to handle duplicates)
