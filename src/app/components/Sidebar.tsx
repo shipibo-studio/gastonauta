@@ -75,6 +75,7 @@ export function Sidebar() {
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors font-sans text-base w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 hover:cursor-pointer ${collapsed ? "justify-center px-0" : ""} ${isActive ? "bg-cyan-400/10 text-cyan-400" : "hover:bg-cyan-400/10 hover:text-cyan-400"}`}
                 tabIndex={0}
                 type="button"
+                onClick={() => item.path && router.push(item.path)}
               >
                 <Icon as={LucideIcon} className="w-5 h-5 shrink-0" />
                 <span className={`${collapsed ? "sr-only" : ""}`}>{item.label}</span>
