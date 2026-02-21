@@ -31,10 +31,10 @@ function parseBancoChileCargoEnCuenta(bodyPlain: string): ParsedTransaction {
     result.customer_name = nameMatch[1].trim()
   }
 
-  // Parse amount: "compra por $2.440"
-  const amountMatch = bodyPlain.match(/compra por \$([\d.]+)/i)
+  // Parse amount: "compra por $2.440" or "Monto\t30.680" (no $ sign in newer format)
+  const amountMatch = bodyPlain.match(/compra por \$([\d.]+)|Monto\s+([\d.]+)/i)
   if (amountMatch) {
-    const amountStr = amountMatch[1].replace(/\./g, '').replace(',', '.')
+    const amountStr = (amountMatch[1] || amountMatch[2]).replace(/\./g, '').replace(',', '.')
     result.amount = parseFloat(amountStr)
   }
 
@@ -44,18 +44,48 @@ function parseBancoChileCargoEnCuenta(bodyPlain: string): ParsedTransaction {
     result.account_last4 = accountMatch[1] || accountMatch[2]
   }
 
-  // Parse merchant: "en TOTTUS LOS DOMINI el"
-  const merchantMatch = bodyPlain.match(/en\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)\s+el/i)
+  // Parse merchant: "en TOTTUS LOS DOMINI el" OR "Comercio MERPAGO*ARTICULOS"
+  // Handles uppercase, lowercase, asterisks, dots, numbers
+  // Examples: MERPAGO*ARTICULOS, Red Movilidad San, PAYU *UBER TRIP, SHELL.PATAGONI 75
+  let merchantMatch = bodyPlain.match(/en\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9][A-Za-zÁÉÍÓÚÑáéíóúñ\s.*\d]+?)\s+(?:el\b|el\s)/i)
+  
+  // Also try to match "Comercio" field format: "Comercio\tMERPAGO*ARTICULOS" or "Comercio MERPAGO"
+  if (!merchantMatch) {
+    merchantMatch = bodyPlain.match(/Comercio\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9][A-Za-zÁÉÍÓÚÑáéíóúñ\s.*\d]+)/i)
+  }
+  
   if (merchantMatch) {
     result.merchant = merchantMatch[1].trim()
   }
 
-  // Parse transaction date: "el 20/02/2026 16:10"
-  const dateMatch = bodyPlain.match(/el\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/i)
+  // Parse transaction date: "el 20/02/2026 16:10" OR "18-02-2026, 4:40:00 p. m."
+  // Format 1: dd/mm/yyyy HH:MM
+  let dateMatch = bodyPlain.match(/el\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/i)
   if (dateMatch) {
     const [day, month, year] = dateMatch[1].split('/')
     const time = dateMatch[2]
     result.transaction_date = `${year}-${month}-${day}T${time}:00-03:00`
+  }
+  
+  // Format 2: dd-mm-yyyy, H:MM:SS p. m. (12-hour with period)
+  dateMatch = bodyPlain.match(/(\d{2})-(\d{2})-(\d{4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s+(p\.\s*m\.|a\.\s*m\.)/i)
+  if (dateMatch) {
+    const day = dateMatch[1]
+    const month = dateMatch[2]
+    const year = dateMatch[3]
+    let hours = parseInt(dateMatch[4])
+    const minutes = dateMatch[5]
+    const seconds = dateMatch[6]
+    const period = dateMatch[7].toLowerCase()
+    
+    // Convert 12-hour to 24-hour
+    if (period.startsWith('p') && hours < 12) {
+      hours += 12
+    } else if (period.startsWith('a') && hours === 12) {
+      hours = 0
+    }
+    
+    result.transaction_date = `${year}-${month}-${day}T${hours.toString().padStart(2, '0')}:${minutes}:${seconds}-03:00`
   }
 
   return result
@@ -344,6 +374,151 @@ Test User: compra por $1.234.567 en STORE el 20/02/2026 16:00`
     const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
 
     expect(result.amount).toBe(1234567)
+  })
+
+  it('parses merchant with asterisk (MERPAGO*ARTICULOS)', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $5.990 en MERPAGO*ARTICULOS el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('MERPAGO*ARTICULOS')
+  })
+
+  it('parses merchant with asterisk and space (PAYU *UBER TRIP)', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $3.500 en PAYU *UBER TRIP el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('PAYU *UBER TRIP')
+  })
+
+  it('parses merchant with lowercase start (Red Movilidad San)', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $2.100 en Red Movilidad San el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('Red Movilidad San')
+  })
+
+  it('parses merchant with dot and numbers (SHELL.PATAGONI 75)', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $45.000 en SHELL.PATAGONI 75 el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('SHELL.PATAGONI 75')
+  })
+
+  it('parses merchant SALCO LOS DOMINIC', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $12.990 en SALCO LOS DOMINIC el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('SALCO LOS DOMINIC')
+  })
+
+  it('parses merchant STA. ISABEL APOQU', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $8.500 en STA. ISABEL APOQU el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('STA. ISABEL APOQU')
+  })
+
+  it('parses merchant MALLPLAZA LOS DOM', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $25.000 en MALLPLAZA LOS DOM el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('MALLPLAZA LOS DOM')
+  })
+
+  it('parses merchant TOTTUS LOS DOMINI', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $15.990 en TOTTUS LOS DOMINI el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('TOTTUS LOS DOMINI')
+  })
+
+  it('parses merchant MERCADOPAGO*LABAR', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $7.990 en MERCADOPAGO*LABAR el 20/02/2026 16:00`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.merchant).toBe('MERCADOPAGO*LABAR')
+  })
+
+  it('parses new date format with dashes and p. m. (18-02-2026, 4:40:00 p. m.)', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $30.680 en MERPAGO*ARTICULOS el 18-02-2026, 4:40:00 p. m.`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.transaction_date).toBe('2026-02-18T16:40:00-03:00')
+    expect(result.amount).toBe(30680)
+    expect(result.merchant).toBe('MERPAGO*ARTICULOS')
+  })
+
+  it('parses new date format with a. m. (08-02-2026, 8:30:00 a. m.)', () => {
+    const body = `Banco de Chile
+
+Test User: compra por $5.000 en STORE el 08-02-2026, 8:30:00 a. m.`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.transaction_date).toBe('2026-02-08T08:30:00-03:00')
+    expect(result.amount).toBe(5000)
+  })
+
+  it('parses amount without $ sign (Monto format)', () => {
+    const body = `Banco de Chile
+
+Test User: Monto 30.680 en STORE el 18-02-2026, 4:40:00 p. m.`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.amount).toBe(30680)
+  })
+
+  it('parses real email format with Fecha Transaccion and table-like structure', () => {
+    const body = `Banco de Chile
+
+Jorge Luis Epunan Hernandez:
+
+Te informamos que se ha realizado una compra con cargo a Cuenta ****5150
+
+Fecha Transacción	18-02-2026, 4:40:00 p. m.
+Fecha Recepción	21-02-2026, 1:24:34 a. m.
+
+Monto	30.680
+
+Comercio	MERPAGO*ARTICULOS`
+
+    const result = parseEmail('enviodigital@bancochile.cl', 'Cargo en Cuenta', body)
+
+    expect(result.amount).toBe(30680)
+    expect(result.merchant).toBe('MERPAGO*ARTICULOS')
+    expect(result.transaction_date).toBe('2026-02-18T16:40:00-03:00')
+    expect(result.account_last4).toBe('5150')
   })
 })
 

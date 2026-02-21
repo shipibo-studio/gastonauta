@@ -58,24 +58,12 @@ async function sendNotificationEmail(
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${emailTypeLabel}</td>
           </tr>
           <tr>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Message ID</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.messageId || 'N/A'}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Cliente</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.customerName || 'No detectado'}</td>
-          </tr>
-          <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>${data.emailType === 'transferencia_fondos' ? 'Beneficiario' : 'Comercio'}</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.merchant || 'No detectado'}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Monto</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Cuenta</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.accountLast4 ? '****' + data.accountLast4 : 'No detectada'}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Banco</strong></td>
