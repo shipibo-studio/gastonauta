@@ -69,7 +69,7 @@ export default function LogsPage() {
   
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortField, setSortField] = useState<SortField>("transaction_date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   
   // Edit modal

@@ -1,6 +1,7 @@
 // Supabase Edge Function: categorize-transaction
 // Uses OpenRouter AI to categorize transactions based on body_plain and merchant
 // Categories are fetched from the database
+// First tries to match keywords, then falls back to AI
 
 const categorizeCorsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,6 +40,41 @@ function buildSystemPrompt(categories: Category[]): string {
   }).join("\n")
   
   return "Eres un asistente de categorizacion de gastos bancarios chilenos.\nAnaliza el siguiente mensaje de transaccion bancaria y determina la categoria mas apropiada basandote en el contenido del email y las palabras clave de cada categoria.\n\nCategorias disponibles:\n" + categoryList + "\n\nResponde SOLO con el nombre de la categoria en espanol, sin puntuacion adicional.\nEjemplo de respuesta valida: \"Supermercado\""
+}
+
+// Categorize by keywords using regex - returns category if match found, null otherwise
+function categorizeByKeywords(
+  bodyPlain: string,
+  merchant: string | null,
+  categories: Category[]
+): { category: string; confidence: number; model: string } | null {
+  const searchText = ((bodyPlain || '') + ' ' + (merchant || '')).toLowerCase()
+  
+  for (const cat of categories) {
+    if (cat.keywords && cat.keywords.length > 0) {
+      for (const keyword of cat.keywords) {
+        try {
+          // Escape special regex characters
+          const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          // Create regex with word boundary, case insensitive
+          const regex = new RegExp('\\b' + escapedKeyword + '\\b', 'i')
+          if (regex.test(searchText)) {
+            console.log('Keyword match found:', keyword, '->', cat.name)
+            return {
+              category: cat.name,
+              confidence: 1.0, // 100% confidence for keyword match
+              model: 'keyword',
+            }
+          }
+        } catch (err) {
+          // Invalid regex, skip
+          console.log('Invalid keyword regex:', keyword)
+        }
+      }
+    }
+  }
+  
+  return null // No keyword match found
 }
 
 interface CategorizationResult {
@@ -215,14 +251,29 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const categorization = await callOpenRouter(
+        // First, try to categorize by keywords
+        const keywordResult = categorizeByKeywords(
           (tx.body_plain as string) || '',
           tx.merchant as string | null,
-          tx.amount as number | null,
-          categories,
-          supabaseUrl,
-          supabaseServiceKey
+          categories
         )
+
+        let categorization
+        if (keywordResult) {
+          // Keyword match found, use it
+          categorization = keywordResult
+          console.log('Using keyword-based category:', categorization.category)
+        } else {
+          // No keyword match, use AI
+          categorization = await callOpenRouter(
+            (tx.body_plain as string) || '',
+            tx.merchant as string | null,
+            tx.amount as number | null,
+            categories,
+            supabaseUrl,
+            supabaseServiceKey
+          )
+        }
 
         // Update transaction with category name directly
         const updateResponse = await fetch(
