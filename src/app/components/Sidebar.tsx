@@ -40,7 +40,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`relative z-10 flex flex-col h-screen transition-all duration-300 bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border-r border-stone-300/20 dark:border-stone-700/40 shadow-xl p-4 ${collapsed ? "w-16 min-w-[4rem]" : "w-64 min-w-[200px] max-w-xs"}`}
+      className={`sticky left-0 top-0 z-10 flex flex-col h-screen transition-all duration-300 bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border-r border-stone-300/20 dark:border-stone-700/40 shadow-xl p-4 ${collapsed ? "w-16 min-w-[4rem]" : "w-64 min-w-[200px] max-w-xs"}`}
     >
       <div className="flex items-center gap-2 mb-8 justify-between">
         {collapsed ? (
