@@ -16,7 +16,7 @@ import { Icon } from "../components/Icon";
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
   { label: "Mis gastos", icon: List, path: "/dashboard/gastos" },
-  { label: "Log", icon: ScrollText, path: "/dashboard/log" },
+  { label: "Logs", icon: ScrollText, path: "/dashboard/logs" },
   { label: "Configuración", icon: Settings, path: "/dashboard/settings" },
   { label: "Cerrar sesión", icon: LogOut, path: null },
 ];
