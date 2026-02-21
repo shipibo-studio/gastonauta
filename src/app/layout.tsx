@@ -4,6 +4,7 @@ import { instrumentSerif, sourceSans } from "@/app/fonts";
 
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ToastProvider } from "./components/Toast";
 
 
 
@@ -21,7 +22,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${instrumentSerif.variable} ${sourceSans.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

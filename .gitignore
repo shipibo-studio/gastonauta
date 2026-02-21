@@ -45,3 +45,6 @@ supabase/migrations
 supabase/.temp
 
 scripts/
+
+# Database backups
+backups/

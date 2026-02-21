@@ -1,37 +1,45 @@
 // Supabase Edge Function: categorize-transaction
 // Uses OpenRouter AI to categorize transactions based on body_plain and merchant
+// Categories are fetched from the database
 
 const categorizeCorsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Available categories for Chilean banking transactions
-const CATEGORIES = [
-  'Supermercado',
-  'Combustible',
-  'Restaurante',
-  'Transporte',
-  'Servicios',
-  'Entretenimiento',
-  'Otros',
-]
+// Interface for category from database
+interface Category {
+  id: string
+  name: string
+  description: string | null
+  keywords: string[] | null
+}
 
-// System prompt for the AI
-const SYSTEM_PROMPT = `Eres un asistente de categorización de gastos bancarios chilenos.
-Analiza el siguiente mensaje de transacción bancaria y determina la categoría más apropiada.
+// Fetch categories from database
+async function fetchCategories(supabaseUrl: string, supabaseHeaders: Record<string, string>): Promise<Category[]> {
+  const response = await fetch(
+    supabaseUrl + "/rest/v1/categories?is_active=eq.true&select=id,name,description,keywords",
+    { headers: supabaseHeaders }
+  )
+  const data = await response.json()
+  return data || []
+}
 
-Categorías disponibles:
-- Supermercado: compras en supermarkets como Walmart, Tottus, Jumbo, Líder, etc.
-- Combustible: bencinas en estaciones como Shell, Copec, Petrobras, etc.
-- Restaurante: restaurants, cafés, delivery de comida
-- Transporte: Uber, taxis, Metro, buses, bencinas
-- Servicios: cuentas de servicios como luz, agua, teléfono, internet, Netflix, Spotify
-- Entretenimiento: cine, juegos, streaming, eventos
-- Otros: cualquier gasto que no encaje en las categorías anteriores
-
-Responde SOLO con el nombre de la categoría en español, sin puntuación adicional.
-Ejemplo de respuesta válida: "Supermercado"`
+// Build dynamic system prompt based on categories with keywords
+function buildSystemPrompt(categories: Category[]): string {
+  const categoryList = categories.map(cat => {
+    let line = "- " + cat.name
+    if (cat.description) {
+      line += ": " + cat.description
+    }
+    if (cat.keywords && cat.keywords.length > 0) {
+      line += " (keywords: " + cat.keywords.join(", ") + ")"
+    }
+    return line
+  }).join("\n")
+  
+  return "Eres un asistente de categorizacion de gastos bancarios chilenos.\nAnaliza el siguiente mensaje de transaccion bancaria y determina la categoria mas apropiada basandote en el contenido del email y las palabras clave de cada categoria.\n\nCategorias disponibles:\n" + categoryList + "\n\nResponde SOLO con el nombre de la categoria en espanol, sin puntuacion adicional.\nEjemplo de respuesta valida: \"Supermercado\""
+}
 
 interface CategorizationResult {
   category: string
@@ -42,7 +50,8 @@ interface CategorizationResult {
 async function callOpenRouter(
   bodyPlain: string,
   merchant: string | null,
-  amount: number | null
+  amount: number | null,
+  categories: Category[]
 ): Promise<CategorizationResult> {
   const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
   
@@ -50,11 +59,14 @@ async function callOpenRouter(
     throw new Error('OPENROUTER_API_KEY not configured')
   }
 
+  // Build dynamic system prompt
+  const systemPrompt = buildSystemPrompt(categories)
+  
   // Build the prompt with transaction details
   const userPrompt = `
 Transaction Details:
 - Merchant/Store: ${merchant || 'Unknown'}
-- Amount: ${amount ? `$${amount.toLocaleString('es-CL')}` : 'Unknown'}
+- Amount: ${amount ? "$" + amount.toLocaleString('es-CL') : 'Unknown'}
 - Email Content:
 ${bodyPlain.substring(0, 2000)}
 
@@ -63,7 +75,7 @@ Determine the category:`
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openRouterApiKey}`,
+      'Authorization': 'Bearer ' + openRouterApiKey,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://gastonauta.supabase.co',
       'X-Title': 'Gastonauta',
@@ -71,7 +83,7 @@ Determine the category:`
     body: JSON.stringify({
       model: 'openrouter/free',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.3,
@@ -81,14 +93,15 @@ Determine the category:`
 
   if (!response.ok) {
     const error = await response.text()
-    throw new Error(`OpenRouter API error: ${error}`)
+    throw new Error('OpenRouter API error: ' + error)
   }
 
   const data = await response.json()
-  const categoryRaw = data.choices?.[0]?.message?.content?.trim() || 'Otros'
+  const categoryRaw = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content ? data.choices[0].message.content.trim() : 'Otros') || 'Otros'
   
-  // Validate and normalize the category
-  const category = CATEGORIES.find(c => 
+  // Validate and normalize the category against database categories
+  const categoryNames = categories.map(c => c.name)
+  const normalizedCategory = categoryNames.find(c => 
     c.toLowerCase() === categoryRaw.toLowerCase()
   ) || 'Otros'
 
@@ -99,7 +112,7 @@ Determine the category:`
     : 0.8
 
   return {
-    category,
+    category: normalizedCategory,
     confidence,
     model: data.model || 'openrouter/free',
   }
@@ -131,8 +144,18 @@ Deno.serve(async (req) => {
     const { transaction_id, limit = 10 } = await req.json()
 
     const supabaseHeaders = {
-      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'Authorization': 'Bearer ' + supabaseServiceKey,
       'apikey': supabaseServiceKey,
+    }
+
+    // Fetch categories from database
+    const categories = await fetchCategories(supabaseUrl, supabaseHeaders)
+    
+    if (categories.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No categories configured. Please add categories in Settings.' }),
+        { status: 400, headers: { ...categorizeCorsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     let transactions: Record<string, unknown>[] = []
@@ -140,7 +163,7 @@ Deno.serve(async (req) => {
     if (transaction_id) {
       // Categorize a single transaction
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/transactions?id=eq.${transaction_id}&select=*`,
+        supabaseUrl + "/rest/v1/transactions?id=eq." + transaction_id + "&select=*",
         { headers: supabaseHeaders }
       )
       const data = await response.json()
@@ -148,7 +171,7 @@ Deno.serve(async (req) => {
     } else {
       // Get uncategorized transactions (batch mode)
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/transactions?is_categorized=eq.false&category_id=is.null&body_plain=not.is.null&limit=${limit}`,
+        supabaseUrl + "/rest/v1/transactions?is_categorized=eq.false&category_id=is.null&body_plain=not.is.null&limit=" + limit,
         { headers: supabaseHeaders }
       )
       const data = await response.json()
@@ -171,12 +194,13 @@ Deno.serve(async (req) => {
         const categorization = await callOpenRouter(
           (tx.body_plain as string) || '',
           tx.merchant as string | null,
-          tx.amount as number | null
+          tx.amount as number | null,
+          categories
         )
 
         // Update transaction with category name directly
         const updateResponse = await fetch(
-          `${supabaseUrl}/rest/v1/transactions?id=eq.${tx.id}`,
+          supabaseUrl + "/rest/v1/transactions?id=eq." + tx.id,
           {
             method: 'PATCH',
             headers: {
@@ -196,7 +220,7 @@ Deno.serve(async (req) => {
 
         if (!updateResponse.ok) {
           const errorText = await updateResponse.text()
-          throw new Error(`Failed to update: ${errorText}`)
+          throw new Error('Failed to update: ' + errorText)
         }
 
         results.push({
@@ -209,7 +233,7 @@ Deno.serve(async (req) => {
 
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Unknown error'
-        console.error(`Error categorizing transaction ${tx.id}:`, errMsg)
+        console.error("Error categorizing transaction " + tx.id + ":", errMsg)
         results.push({
           transaction_id: tx.id,
           success: false,
