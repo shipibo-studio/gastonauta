@@ -15,6 +15,32 @@ const BEARER_TOKEN = Deno.env.get('WEBHOOK_BEARER_TOKEN') || 'chg-webhook-2026-s
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const NOTIFICATION_EMAIL = Deno.env.get('NOTIFICATION_EMAIL') || 'notifications@gastonauta.com'
 
+// Available categories for categorization
+const CATEGORIES = [
+  'Supermercado',
+  'Combustible',
+  'Restaurante',
+  'Transporte',
+  'Servicios',
+  'Entretenimiento',
+  'Otros',
+]
+
+// System prompt for AI categorization
+const CATEGORIZATION_PROMPT = `Eres un asistente de categorización de gastos bancarios chilenos.
+Analiza el siguiente mensaje de transacción bancaria y determina la categoría más apropiada.
+
+Categorías disponibles:
+- Supermercado: compras en supermarkets como Walmart, Tottus, Jumbo, Líder, etc.
+- Combustible: bencinas en estaciones como Shell, Copec, Petrobras, etc.
+- Restaurante: restaurants, cafés, delivery de comida
+- Transporte: Uber, taxis, Metro, buses
+- Servicios: cuentas de servicios como luz, agua, teléfono, internet, Netflix, Spotify
+- Entretenimiento: cine, juegos, streaming, eventos
+- Otros: cualquier gasto que no encaje en las categorías anteriores
+
+Responde SOLO con el nombre de la categoría en español, sin puntuación adicional.`
+
 // Email notification function using Resend API directly
 async function sendNotificationEmail(
   type: 'success' | 'error',
@@ -27,6 +53,8 @@ async function sendNotificationEmail(
     accountLast4?: string | null
     transactionDate?: string | null
     senderBank?: string | null
+    category?: string | null
+    categorizationModel?: string | null
     error?: string
   }
 ) {
@@ -73,6 +101,12 @@ async function sendNotificationEmail(
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha Transacción</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.transactionDate ? new Date(data.transactionDate).toLocaleString('es-CL') : 'No detectada'}</td>
           </tr>
+          ${data.category ? `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Categoría</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb; color: #8b5cf6; font-weight: bold;">${data.category}</td>
+          </tr>
+          ` : ''}
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha Recepción</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${new Date().toLocaleString('es-CL')}</td>
@@ -128,6 +162,80 @@ async function sendNotificationEmail(
   }
 }
 
+// AI categorization function using OpenRouter
+async function categorizeTransaction(
+  bodyPlain: string,
+  merchant: string | null,
+  amount: number | null
+): Promise<{ category: string; confidence: number; model: string } | null> {
+  const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+  if (!openRouterApiKey || !supabaseUrl || !supabaseServiceKey) {
+    console.log('Missing API keys for categorization, skipping')
+    return null
+  }
+
+  try {
+    const userPrompt = `
+Transaction Details:
+- Merchant/Store: ${merchant || 'Unknown'}
+- Amount: ${amount ? `${amount.toLocaleString('es-CL')}` : 'Unknown'}
+- Email Content:
+${bodyPlain.substring(0, 2000)}
+
+Determine the category:`
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openRouterApiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://gastonauta.supabase.co',
+        'X-Title': 'Gastonauta',
+      },
+      body: JSON.stringify({
+        model: 'openrouter/free',
+        messages: [
+          { role: 'system', content: CATEGORIZATION_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 50,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error('OpenRouter API error:', error)
+      return null
+    }
+
+    const data = await response.json()
+    const categoryRaw = data.choices?.[0]?.message?.content?.trim() || 'Otros'
+
+    // Validate and normalize the category
+    const category = CATEGORIES.find(c =>
+      c.toLowerCase() === categoryRaw.toLowerCase()
+    ) || 'Otros'
+
+    const usage = data.usage || {}
+    const confidence = usage.prompt_tokens && usage.completion_tokens
+      ? Math.min(1, usage.completion_tokens / 100)
+      : 0.5
+
+    return {
+      category,
+      confidence,
+      model: data.model || 'openrouter/free',
+    }
+  } catch (error) {
+    console.error('Error in categorization:', error)
+    return null
+  }
+}
+
 interface EmailData {
   date?: string
   from_name?: string
@@ -137,6 +245,21 @@ interface EmailData {
   body_plain?: string
   subject?: string
   body_html?: string
+}
+
+// Updated interface to include category
+interface NotificationData {
+  messageId?: string
+  merchant?: string | null
+  amount?: number | null
+  emailType?: string | null
+  customerName?: string | null
+  accountLast4?: string | null
+  transactionDate?: string | null
+  senderBank?: string | null
+  category?: string | null
+  categorizationModel?: string | null
+  error?: string
 }
 
 function parseEmailDate(dateStr: string | undefined): string | null {
@@ -301,7 +424,34 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Send success notification
+    // Get the inserted transaction ID
+    const transactionId = data?.[0]?.id
+
+    // Categorize the transaction using AI
+    let categorizationResult = null
+    if (transactionId && emailData.body_plain) {
+      categorizationResult = await categorizeTransaction(
+        emailData.body_plain,
+        parsedData.merchant,
+        parsedData.amount
+      )
+
+      // Update transaction with categorization if successful
+      if (categorizationResult && transactionId) {
+        await supabase
+          .from('transactions')
+          .update({
+            category_id: categorizationResult.category,
+            is_categorized: true,
+            categorized_at: new Date().toISOString(),
+            categorization_model: categorizationResult.model,
+            categorization_confidence: categorizationResult.confidence,
+          })
+          .eq('id', transactionId)
+      }
+    }
+
+    // Send success notification with category
     await sendNotificationEmail('success', {
       messageId: emailData.message_id,
       merchant: parsedData.merchant,
@@ -311,13 +461,16 @@ Deno.serve(async (req) => {
       accountLast4: parsedData.account_last4,
       transactionDate: parsedData.transaction_date,
       senderBank: parsedData.sender_bank,
+      category: categorizationResult?.category || null,
+      categorizationModel: categorizationResult?.model || null,
     })
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         data: data?.[0] || null,
-        parsed: parsedData 
+        parsed: parsedData,
+        categorization: categorizationResult
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
