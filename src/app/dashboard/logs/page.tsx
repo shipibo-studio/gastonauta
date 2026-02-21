@@ -138,6 +138,22 @@ export default function LogsPage() {
     }
   }
 
+  function formatEmailType(emailType: string | null): string {
+    if (!emailType) return '-';
+    
+    // Normalizar tipos de email a texto más legible
+    const typeMap: Record<string, string> = {
+      'cargo_en_cuenta': 'Cargo en Cuenta',
+      'transferencia': 'Transferencia',
+      'transferencia_fondos': 'Transferencia',
+      'transferencia_recibida': 'Transferencia Recibida',
+      'pago_servicio': 'Pago de Servicio',
+      'abono': 'Abono',
+    };
+    
+    return typeMap[emailType] || emailType;
+  }
+
   function formatAmount(amount: number | null): string {
     if (amount === null) return "-";
     return new Intl.NumberFormat("es-CL", {
@@ -294,34 +310,46 @@ export default function LogsPage() {
             <table className="w-full text-xs">
               <thead className="bg-stone-800/50 sticky top-0">
                 <tr className="border-b border-stone-600/30">
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Acciones</th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Fecha</th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Comercio</th>
-                  <th className="px-2 py-2 text-right text-stone-300 font-medium">Monto</th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Cuenta</th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Banco</th>
+                  <th 
+                    className="px-2 py-2 text-left text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
+                    onClick={() => handleSort('transaction_date')}
+                  >
+                    Fecha {sortField === 'transaction_date' && (sortOrder === 'desc' ? '↓' : '↑')}
+                  </th>
+                  <th 
+                    className="px-2 py-2 text-right text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
+                    onClick={() => handleSort('amount')}
+                  >
+                    Monto {sortField === 'amount' && (sortOrder === 'desc' ? '↓' : '↑')}
+                  </th>
+                  <th 
+                    className="px-2 py-2 text-left text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
+                    onClick={() => handleSort('merchant')}
+                  >
+                    Comercio {sortField === 'merchant' && (sortOrder === 'desc' ? '↓' : '↑')}
+                  </th>
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Categoría</th>
+                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Banco</th>
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Tipo</th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Asunto</th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Email</th>
+                  <th className="px-2 py-2 text-center text-stone-300 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={7} className="px-2 py-8 text-center text-stone-400">
                       <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={10} className="px-2 py-8 text-center text-red-400">
+                    <td colSpan={7} className="px-2 py-8 text-center text-red-400">
                       Error: {error}
                     </td>
                   </tr>
                 ) : transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={7} className="px-2 py-8 text-center text-stone-400">
                       No hay transacciones
                     </td>
                   </tr>
@@ -331,6 +359,34 @@ export default function LogsPage() {
                       key={tx.id} 
                       className="border-b border-stone-700/30 hover:bg-stone-700/20 transition-colors"
                     >
+                      <td className="px-2 py-2 text-stone-200 whitespace-nowrap">
+                        {formatDate(tx.transaction_date || tx.created_at)}
+                      </td>
+                      <td className="px-2 py-2 text-right text-cyan-400 font-medium whitespace-nowrap">
+                        {formatAmount(tx.amount)}
+                      </td>
+                      <td className="px-2 py-2 text-stone-200 font-medium max-w-[150px] truncate">
+                        {tx.merchant || "-"}
+                      </td>
+                      <td className="px-2 py-2">
+                        {tx.category_id ? (
+                          <span className="px-2 py-0.5 rounded-full bg-violet-400/20 text-violet-400 text-xs font-medium">
+                            {tx.category_id}
+                          </span>
+                        ) : tx.is_categorized === false ? (
+                          <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400 text-xs">
+                            Sin categorizar
+                          </span>
+                        ) : (
+                          <span className="text-stone-500 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
+                        {tx.sender_bank || "-"}
+                      </td>
+                      <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
+                        {formatEmailType(tx.email_type)}
+                      </td>
                       <td className="px-2 py-2">
                         <div className="flex gap-1">
                           <button
@@ -348,43 +404,6 @@ export default function LogsPage() {
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
-                      </td>
-                      <td className="px-2 py-2 text-stone-200 whitespace-nowrap">
-                        {formatDate(tx.transaction_date || tx.created_at)}
-                      </td>
-                      <td className="px-2 py-2 text-stone-200 font-medium max-w-[120px] truncate">
-                        {tx.merchant || "-"}
-                      </td>
-                      <td className="px-2 py-2 text-right text-cyan-400 font-medium whitespace-nowrap">
-                        {formatAmount(tx.amount)}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 font-mono text-xs">
-                        ****{tx.account_last4}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[80px] truncate">
-                        {tx.sender_bank || "-"}
-                      </td>
-                      <td className="px-2 py-2">
-                        {tx.category_id ? (
-                          <span className="px-2 py-0.5 rounded-full bg-violet-400/20 text-violet-400 text-xs font-medium">
-                            {tx.category_id}
-                          </span>
-                        ) : tx.is_categorized === false ? (
-                          <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400 text-xs">
-                            Sin categorizar
-                          </span>
-                        ) : (
-                          <span className="text-stone-500 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[80px] truncate">
-                        {tx.email_type || "-"}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[150px] truncate">
-                        {tx.subject || "-"}
-                      </td>
-                      <td className="px-2 py-2 text-stone-500 max-w-[100px] truncate">
-                        {tx.from_email || "-"}
                       </td>
                     </tr>
                   ))
