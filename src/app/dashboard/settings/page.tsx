@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Sidebar } from "../../components/Sidebar";
 import { ConfirmModal } from "../../components/ConfirmModal";
+import { useToast } from "../../components/Toast";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
@@ -13,8 +14,7 @@ import {
   Tag, 
   X, 
   Check,
-  Loader2,
-  AlertCircle
+  Loader2
 } from "lucide-react";
 
 // Type for category
@@ -31,9 +31,9 @@ interface Category {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"categories">("categories");
   
   // Modal states
@@ -78,7 +78,7 @@ export default function SettingsPage() {
       setCategories(data || []);
     } catch (err) {
       console.error("Error fetching categories:", err);
-      setError("Error al cargar las categorías");
+      showToast("Error al cargar las categorías", "error");
     } finally {
       setLoading(false);
     }
@@ -122,7 +122,6 @@ export default function SettingsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setError(null);
 
     try {
       const keywordsArray = formData.keywords
@@ -157,9 +156,13 @@ export default function SettingsPage() {
 
       await fetchCategories();
       closeModal();
+      showToast(
+        editingCategory ? "Categoría actualizada exitosamente" : "Categoría creada exitosamente",
+        "success"
+      );
     } catch (err) {
       console.error("Error saving category:", err);
-      setError("Error al guardar la categoría");
+      showToast("Error al guardar la categoría", "error");
     } finally {
       setSaving(false);
     }
@@ -179,9 +182,10 @@ export default function SettingsPage() {
       await fetchCategories();
       setDeleteModalOpen(false);
       setCategoryToDelete(null);
+      showToast("Categoría eliminada exitosamente", "success");
     } catch (err) {
       console.error("Error deleting category:", err);
-      setError("Error al eliminar la categoría");
+      showToast("Error al eliminar la categoría", "error");
     } finally {
       setSaving(false);
     }
@@ -201,9 +205,13 @@ export default function SettingsPage() {
 
       if (updateError) throw updateError;
       await fetchCategories();
+      showToast(
+        category.is_active ? "Categoría desactivada" : "Categoría activada",
+        "success"
+      );
     } catch (err) {
       console.error("Error toggling category:", err);
-      setError("Error al cambiar el estado de la categoría");
+      showToast("Error al cambiar el estado de la categoría", "error");
     }
   };
 
@@ -236,14 +244,6 @@ export default function SettingsPage() {
             Categorías
           </button>
         </div>
-
-        {/* Error message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-400">
-            <AlertCircle className="w-5 h-5" />
-            {error}
-          </div>
-        )}
 
         {/* Categories Section */}
         {activeTab === "categories" && (

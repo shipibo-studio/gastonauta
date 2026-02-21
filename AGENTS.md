@@ -20,6 +20,13 @@
 
 > Aplica estos lineamientos en todas las vistas y componentes para mantener coherencia visual y experiencia moderna.
 
+## Componentes Reutilizables
+
+- **ConfirmModal:** Componente para confirmar acciones destructivas (eliminar). Ubicación: `src/app/components/ConfirmModal.tsx`.
+- **Toast:** Componente para notificaciones en esquina inferior derecha. Ubicación: `src/app/components/Toast.tsx`. Usa el hook `useToast()` para mostrar notificaciones.
+- **Acciones destructivas:** Siempre usar `ConfirmModal` para confirmar eliminaciones. Nunca usar `window.confirm()`.
+- **Notificaciones:** Siempre usar el componente `Toast` para notificar acciones exitosas o errores (no usar `alert()` ni `console.log` para feedback al usuario).
+
 ## Migraciones de Base de Datos (Supabase)
 
 - Todas las migraciones SQL deben ubicarse en `supabase/migrations/`.
