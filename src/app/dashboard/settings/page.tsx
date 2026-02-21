@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Sidebar } from "../../components/Sidebar";
+import { ConfirmModal } from "../../components/ConfirmModal";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
@@ -531,59 +532,20 @@ export default function SettingsPage() {
           </div>
         )}
         {/* Delete Confirmation Modal */}
-        {deleteModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setDeleteModalOpen(false)}
-            />
-
-            {/* Modal content */}
-            <div className="relative w-full max-w-sm bg-stone-900/90 border border-stone-700/50 rounded-2xl shadow-2xl backdrop-blur-xl p-6">
-              {/* Header */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-3 bg-pink-400/20 rounded-full">
-                  <Trash2 className="w-6 h-6 text-pink-400" />
-                </div>
-                <h2 className="text-xl font-serif text-stone-100">
-                  Eliminar Categoría
-                </h2>
-              </div>
-
-              {/* Message */}
-              <p className="text-stone-300 font-sans mb-6">
-                ¿Estás seguro de que deseas eliminar la categoría &quot;{categoryToDelete?.name}&quot;? 
-                Esta acción no se puede deshacer.
-              </p>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setDeleteModalOpen(false);
-                    setCategoryToDelete(null);
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-stone-700/50 hover:bg-stone-700 text-stone-300 rounded-lg font-sans text-sm transition-colors hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-stone-500"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={saving}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-pink-400/20 hover:bg-pink-400/30 text-pink-400 border border-pink-400/30 rounded-lg font-sans text-sm transition-colors hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-pink-400 disabled:opacity-50"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                  Eliminar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmModal
+          isOpen={deleteModalOpen}
+          title="Eliminar Categoría"
+          message={`¿Estás seguro de que deseas eliminar la categoría "${categoryToDelete?.name}"? Esta acción no se puede deshacer.`}
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          onConfirm={handleDelete}
+          onCancel={() => {
+            setDeleteModalOpen(false);
+            setCategoryToDelete(null);
+          }}
+          loading={saving}
+          variant="danger"
+        />
       </main>
     </div>
   );

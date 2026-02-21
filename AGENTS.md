@@ -16,6 +16,7 @@
   - Usa `focus:ring` y `focus:border` en inputs y botones.
   - Todos los links y botones deben mostrar `cursor-pointer` al hacer hover para indicar interactividad.
   - Todos los botones deben tener `cursor: pointer;` al `:hover`.
+  - **Confirmación de acciones destructivas:** Siempre que se realice una acción de eliminación (delete), debe usarse el componente `ConfirmModal` para confirmar la acción. Nunca usar `window.confirm()` o `confirm()` nativo del navegador.
 
 > Aplica estos lineamientos en todas las vistas y componentes para mantener coherencia visual y experiencia moderna.
 

@@ -25,13 +25,20 @@ async function fetchCategories(supabaseUrl: string, supabaseHeaders: Record<stri
   return data || []
 }
 
-// Build dynamic system prompt based on categories
+// Build dynamic system prompt based on categories with keywords
 function buildSystemPrompt(categories: Category[]): string {
-  const categoryList = categories.map(cat => 
-    "- " + cat.name + (cat.description ? ": " + cat.description : "")
-  ).join("\n")
+  const categoryList = categories.map(cat => {
+    let line = "- " + cat.name
+    if (cat.description) {
+      line += ": " + cat.description
+    }
+    if (cat.keywords && cat.keywords.length > 0) {
+      line += " (keywords: " + cat.keywords.join(", ") + ")"
+    }
+    return line
+  }).join("\n")
   
-  return "Eres un asistente de categorizacion de gastos bancarios chilenos.\nAnaliza el siguiente mensaje de transaccion bancaria y determina la categoria mas apropiada.\n\nCategorias disponibles:\n" + categoryList + "\n\nResponde SOLO con el nombre de la categoria en espanol, sin puntuacion adicional.\nEjemplo de respuesta valida: \"Supermercado\""
+  return "Eres un asistente de categorizacion de gastos bancarios chilenos.\nAnaliza el siguiente mensaje de transaccion bancaria y determina la categoria mas apropiada basandote en el contenido del email y las palabras clave de cada categoria.\n\nCategorias disponibles:\n" + categoryList + "\n\nResponde SOLO con el nombre de la categoria en espanol, sin puntuacion adicional.\nEjemplo de respuesta valida: \"Supermercado\""
 }
 
 interface CategorizationResult {
