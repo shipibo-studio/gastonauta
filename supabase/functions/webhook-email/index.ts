@@ -177,6 +177,26 @@ async function categorizeTransaction(
     return null
   }
 
+  // Fetch LLM model from settings table
+  let llmModel = 'openrouter/free'
+  try {
+    const settingsResponse = await fetch(
+      `${supabaseUrl}/rest/v1/settings?key=eq.llm_model&select=value`,
+      {
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+        },
+      }
+    )
+    const settingsData = await settingsResponse.json()
+    if (settingsData && settingsData.length > 0 && settingsData[0].value) {
+      llmModel = settingsData[0].value
+    }
+  } catch (err) {
+    console.log('Error fetching LLM model from settings, using default:', err)
+  }
+
   try {
     const userPrompt = `
 Transaction Details:
@@ -196,7 +216,7 @@ Determine the category:`
         'X-Title': 'Gastonauta',
       },
       body: JSON.stringify({
-        model: 'openrouter/free',
+        model: llmModel,
         messages: [
           { role: 'system', content: CATEGORIZATION_PROMPT },
           { role: 'user', content: userPrompt },

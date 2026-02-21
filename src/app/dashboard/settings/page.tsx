@@ -14,7 +14,9 @@ import {
   Tag, 
   X, 
   Check,
-  Loader2
+  Loader2,
+  Brain,
+  ExternalLink
 } from "lucide-react";
 
 // Type for category
@@ -34,7 +36,7 @@ export default function SettingsPage() {
   const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"categories">("categories");
+  const [activeTab, setActiveTab] = useState<"categories" | "ia">("categories");
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,7 +47,9 @@ export default function SettingsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   
-  // Form state
+  // LLM Model state
+  const [llmModel, setLlmModel] = useState("openrouter/free");
+  const [savingLlmModel, setSavingLlmModel] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -64,6 +68,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchCategories();
+    fetchLlmModel();
   }, []);
 
   const fetchCategories = async () => {
@@ -81,6 +86,46 @@ export default function SettingsPage() {
       showToast("Error al cargar las categorías", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLlmModel = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", "llm_model")
+        .single();
+
+      if (error) throw error;
+      if (data?.value) {
+        setLlmModel(data.value);
+      }
+    } catch (err) {
+      console.error("Error fetching LLM model:", err);
+    }
+  };
+
+  const saveLlmModel = async () => {
+    if (!llmModel.trim()) {
+      showToast("El modelo no puede estar vacío", "error");
+      return;
+    }
+
+    try {
+      setSavingLlmModel(true);
+      const { error } = await supabase
+        .from("settings")
+        .update({ value: llmModel.trim() })
+        .eq("key", "llm_model");
+
+      if (error) throw error;
+      showToast("Modelo de LLM actualizado exitosamente", "success");
+    } catch (err) {
+      console.error("Error saving LLM model:", err);
+      showToast("Error al guardar el modelo de LLM", "error");
+    } finally {
+      setSavingLlmModel(false);
     }
   };
 
@@ -225,16 +270,13 @@ export default function SettingsPage() {
             <Settings className="w-8 h-8 text-cyan-400" />
             Configuración
           </h1>
-          <p className="text-stone-400 mt-2 font-sans">
-            Administra las categorías utilizadas por la IA para clasificar tus gastos
-          </p>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 border-b border-stone-700/50 pb-4">
           <button
             onClick={() => setActiveTab("categories")}
-            className={`px-4 py-2 rounded-lg font-sans text-sm transition-all ${
+            className={`px-4 py-2 rounded-lg font-sans text-sm transition-all hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400 ${
               activeTab === "categories"
                 ? "bg-cyan-400/20 text-cyan-400 border border-cyan-400/30"
                 : "text-stone-400 hover:text-stone-200 hover:bg-stone-700/30"
@@ -242,6 +284,17 @@ export default function SettingsPage() {
           >
             <Tag className="w-4 h-4 inline-block mr-2" />
             Categorías
+          </button>
+          <button
+            onClick={() => setActiveTab("ia")}
+            className={`px-4 py-2 rounded-lg font-sans text-sm transition-all hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400 ${
+              activeTab === "ia"
+                ? "bg-cyan-400/20 text-cyan-400 border border-cyan-400/30"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-700/30"
+            }`}
+          >
+            <Brain className="w-4 h-4 inline-block mr-2" />
+            IA
           </button>
         </div>
 
@@ -366,6 +419,67 @@ export default function SettingsPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* IA Section */}
+        {activeTab === "ia" && (
+          <div className="space-y-6">
+            <div className="p-6 bg-white/5 border border-stone-600/30 rounded-xl backdrop-blur-xl">
+              <h2 className="text-xl font-serif text-stone-100 mb-2 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-cyan-400" />
+                Configuración de IA
+              </h2>
+              <p className="text-stone-400 text-sm font-sans mb-6">
+                Configura el modelo de lenguaje utilizado para categorizar tus transacciones
+              </p>
+
+              {/* LLM Model Input */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-stone-300 text-sm font-sans mb-1.5">
+                    Modelo de LLM
+                  </label>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={llmModel}
+                      onChange={(e) => setLlmModel(e.target.value)}
+                      className="flex-1 px-4 py-2.5 bg-stone-800/50 border border-stone-600/30 rounded-lg text-stone-100 font-sans placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all"
+                      placeholder="openrouter/free"
+                    />
+                    <button
+                      onClick={saveLlmModel}
+                      disabled={savingLlmModel}
+                      className="flex items-center justify-center gap-2 px-6 py-2.5 bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-400 border border-cyan-400/30 rounded-lg font-sans text-sm transition-colors hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:opacity-50"
+                    >
+                      {savingLlmModel ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      Guardar
+                    </button>
+                  </div>
+                  <p className="text-stone-500 text-xs mt-2 font-sans">
+                    Ejemplo: openrouter/free, openrouter/anthropic/claude-3-haiku, etc.
+                  </p>
+                </div>
+
+                {/* Link to OpenRouter models */}
+                <div className="pt-4 border-t border-stone-700/30">
+                  <a
+                    href="https://openrouter.ai/models"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-sans transition-colors hover:cursor-pointer"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Ver modelos disponibles en OpenRouter
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

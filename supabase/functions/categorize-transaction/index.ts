@@ -51,12 +51,34 @@ async function callOpenRouter(
   bodyPlain: string,
   merchant: string | null,
   amount: number | null,
-  categories: Category[]
+  categories: Category[],
+  supabaseUrl: string,
+  supabaseServiceKey: string
 ): Promise<CategorizationResult> {
   const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
   
   if (!openRouterApiKey) {
     throw new Error('OPENROUTER_API_KEY not configured')
+  }
+
+  // Fetch LLM model from settings table
+  let llmModel = 'openrouter/free'
+  try {
+    const settingsResponse = await fetch(
+      supabaseUrl + "/rest/v1/settings?key=eq.llm_model&select=value",
+      {
+        headers: {
+          'Authorization': 'Bearer ' + supabaseServiceKey,
+          'apikey': supabaseServiceKey,
+        },
+      }
+    )
+    const settingsData = await settingsResponse.json()
+    if (settingsData && settingsData.length > 0 && settingsData[0].value) {
+      llmModel = settingsData[0].value
+    }
+  } catch (err) {
+    console.log('Error fetching LLM model from settings, using default:', err)
   }
 
   // Build dynamic system prompt
@@ -81,7 +103,7 @@ Determine the category:`
       'X-Title': 'Gastonauta',
     },
     body: JSON.stringify({
-      model: 'openrouter/free',
+      model: llmModel,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -124,6 +146,8 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Note: This function uses service role key for database operations
+    // No user authentication required since it performs server-side categorization
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -195,7 +219,9 @@ Deno.serve(async (req) => {
           (tx.body_plain as string) || '',
           tx.merchant as string | null,
           tx.amount as number | null,
-          categories
+          categories,
+          supabaseUrl,
+          supabaseServiceKey
         )
 
         // Update transaction with category name directly

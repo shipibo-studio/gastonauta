@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Sidebar } from "../../components/Sidebar";
+import { useToast } from "../../components/Toast";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
@@ -12,7 +13,9 @@ import {
   Pencil,
   Trash2,
   X,
-  Check
+  Check,
+  Brain,
+  Loader2
 } from "lucide-react";
 
 interface Transaction {
@@ -77,6 +80,10 @@ export default function LogsPage() {
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Re-categorize with AI
+  const [recategorizingId, setRecategorizingId] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -272,6 +279,61 @@ export default function LogsPage() {
     }
   }
 
+  async function recategorizeWithAI(txId: string) {
+    setRecategorizingId(txId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('No estás autenticado. Por favor, inicia sesión.');
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/categorize-transaction`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          },
+          body: JSON.stringify({ transaction_id: txId }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al categorizar');
+      }
+
+      // Check if any transaction failed
+      const failedResults = result.results?.filter((r: { success: boolean }) => !r.success) || [];
+      if (failedResults.length > 0) {
+        let errorMsg = failedResults[0]?.error || 'Error al categorizar con IA';
+        // Extract message from OpenRouter error response if it's a JSON string
+        try {
+          const parsedError = JSON.parse(errorMsg.replace('OpenRouter API error: ', ''));
+          errorMsg = parsedError.error?.message || parsedError.message || errorMsg;
+        } catch {
+          // Not JSON, use as is
+        }
+        showToast(errorMsg, 'error');
+      } else {
+        showToast('Transacción categorizada exitosamente', 'success');
+      }
+
+      // Refresh data
+      await fetchTransactions();
+    } catch (err) {
+      console.error('Error re-categorizing:', err);
+      showToast(err instanceof Error ? err.message : 'Error al categorizar con IA', 'error');
+    } finally {
+      setRecategorizingId(null);
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
@@ -331,25 +393,26 @@ export default function LogsPage() {
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Categoría</th>
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Banco</th>
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Tipo</th>
+                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Título</th>
                   <th className="px-2 py-2 text-center text-stone-300 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={8} className="px-2 py-8 text-center text-stone-400">
                       <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-red-400">
+                    <td colSpan={8} className="px-2 py-8 text-center text-red-400">
                       Error: {error}
                     </td>
                   </tr>
                 ) : transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={8} className="px-2 py-8 text-center text-stone-400">
                       No hay transacciones
                     </td>
                   </tr>
@@ -387,8 +450,23 @@ export default function LogsPage() {
                       <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
                         {formatEmailType(tx.email_type)}
                       </td>
+                      <td className="px-2 py-2 text-stone-200 max-w-[200px] truncate">
+                        {tx.subject || "-"}
+                      </td>
                       <td className="px-2 py-2">
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 justify-center">
+                          <button
+                            onClick={() => recategorizeWithAI(tx.id)}
+                            disabled={recategorizingId === tx.id}
+                            className="p-1 rounded hover:bg-emerald-400/20 text-emerald-400 transition-colors hover:cursor-pointer disabled:opacity-50"
+                            title="Categorizar con IA"
+                          >
+                            {recategorizingId === tx.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Brain className="w-3 h-3" />
+                            )}
+                          </button>
                           <button
                             onClick={() => startEdit(tx)}
                             className="p-1 rounded hover:bg-cyan-400/20 text-cyan-400 transition-colors hover:cursor-pointer"
