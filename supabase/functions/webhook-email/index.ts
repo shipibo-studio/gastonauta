@@ -22,6 +22,11 @@ async function sendNotificationEmail(
     messageId?: string
     merchant?: string | null
     amount?: number | null
+    emailType?: string | null
+    customerName?: string | null
+    accountLast4?: string | null
+    transactionDate?: string | null
+    senderBank?: string | null
     error?: string
   }
 ) {
@@ -31,29 +36,57 @@ async function sendNotificationEmail(
   }
 
   const isSuccess = type === 'success'
+  
+  // Determine email type label
+  const emailTypeLabel = data.emailType === 'cargo_en_cuenta' 
+    ? 'Cargo en Cuenta' 
+    : data.emailType === 'transferencia_fondos' 
+      ? 'Transferencia de Fondos' 
+      : 'Transacción'
+  
   const subject = isSuccess 
-    ? `✅ Email guardado exitosamente - ${data.merchant || 'Transacción'}` 
-    : `❌ Error al guardar email`
+    ? `${emailTypeLabel} guardado - ${data.merchant || data.customerName || 'Transacción'}` 
+    : `Error al guardar email`
 
   const htmlContent = isSuccess
     ? `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #10b981;">✅ Email guardado exitosamente</h2>
+        <h2 style="color: #10b981;">✅ ${emailTypeLabel} guardado exitosamente</h2>
         <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Tipo</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${emailTypeLabel}</td>
+          </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Message ID</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.messageId || 'N/A'}</td>
           </tr>
           <tr>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Comercio</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Cliente</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.customerName || 'No detectado'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>${data.emailType === 'transferencia_fondos' ? 'Beneficiario' : 'Comercio'}</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.merchant || 'No detectado'}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Monto</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `$${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
           </tr>
           <tr>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Cuenta</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.accountLast4 ? '****' + data.accountLast4 : 'No detectada'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Banco</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.senderBank || 'Banco de Chile'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha Transacción</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.transactionDate ? new Date(data.transactionDate).toLocaleString('es-CL') : 'No detectada'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha Recepción</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${new Date().toLocaleString('es-CL')}</td>
           </tr>
         </table>
@@ -283,6 +316,11 @@ Deno.serve(async (req) => {
       messageId: emailData.message_id,
       merchant: parsedData.merchant,
       amount: parsedData.amount,
+      emailType: parsedData.email_type,
+      customerName: parsedData.customer_name,
+      accountLast4: parsedData.account_last4,
+      transactionDate: parsedData.transaction_date,
+      senderBank: parsedData.sender_bank,
     })
 
     return new Response(

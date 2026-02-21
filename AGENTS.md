@@ -35,11 +35,4 @@
 - Para autenticación simple, usar Bearer token en el header `Authorization`.
 - Desplegar con: `supabase functions deploy nombre-funcion`.
 - Invocar con: `https://<project>.supabase.co/functions/v1/nombre-funcion`.
-
-## Variables de Entorno para Edge Functions
-
-Al desplegar, configurar secrets en Supabase:
-```bash
-supabase secrets set WEBHOOK_BEARER_TOKEN=tu-token-seguro
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=tu-service-role-key
-```
+- Obtener desde archivo .env supabase `<project>` ID.
