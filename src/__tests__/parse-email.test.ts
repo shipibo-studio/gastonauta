@@ -9,6 +9,7 @@ interface ParsedTransaction {
   transaction_date: string | null
   sender_bank: string | null
   email_type: string | null
+  is_expense: boolean
 }
 
 // Parser for Banco de Chile - Cargo en Cuenta
@@ -21,6 +22,7 @@ function parseBancoChileCargoEnCuenta(bodyPlain: string): ParsedTransaction {
     transaction_date: null,
     sender_bank: 'Banco de Chile',
     email_type: 'cargo_en_cuenta',
+    is_expense: true,
   }
 
   if (!bodyPlain) return result
@@ -101,6 +103,7 @@ function parseBancoChileTransferencia(bodyPlain: string): ParsedTransaction {
     transaction_date: null,
     sender_bank: 'Banco de Chile',
     email_type: 'transferencia_fondos',
+    is_expense: true,
   }
 
   if (!bodyPlain) return result
@@ -172,6 +175,7 @@ function parseBancoEstadoEmail(bodyPlain: string): ParsedTransaction {
     transaction_date: null,
     sender_bank: 'Banco Estado',
     email_type: 'transaction_notification',
+    is_expense: true,
   }
 
   if (!bodyPlain) return result
@@ -222,6 +226,7 @@ function parseSantanderEmail(bodyPlain: string): ParsedTransaction {
     transaction_date: null,
     sender_bank: 'Santander Chile',
     email_type: 'transaction_notification',
+    is_expense: true,
   }
 
   if (!bodyPlain) return result

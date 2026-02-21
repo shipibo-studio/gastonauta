@@ -164,6 +164,7 @@ async function parseEmailWithFunction(
   transaction_date: string | null
   sender_bank: string | null
   email_type: string | null
+  is_expense: boolean
 }> {
   const parseUrl = `${supabaseUrl}/functions/v1/parse-email`
   const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4d2pibHV2eGV1c3h0cHN0dnNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MzU5MDQsImV4cCI6MjA4NzAxMTkwNH0.R_EG2M_mkupDymZzcmj1HWOScHk_12V9WqML0uy053w'
@@ -263,6 +264,7 @@ Deno.serve(async (req) => {
       transaction_date: parsedData.transaction_date,
       sender_bank: parsedData.sender_bank,
       email_type: parsedData.email_type,
+      is_expense: parsedData.is_expense,
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
