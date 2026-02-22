@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "backup": "./scripts/backup-db.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",

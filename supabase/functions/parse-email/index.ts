@@ -353,6 +353,9 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
   try {
     // Only accept POST requests
     if (req.method !== 'POST') {
@@ -376,6 +379,27 @@ Deno.serve(async (req) => {
     // Parse the email
     const parsed = parseEmail(from_email, subject, body_plain || body_raw || '')
 
+    // Log success to activity_logs
+    if (supabaseUrl && supabaseServiceKey) {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+      const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
+      
+      await logSupabase.from('activity_logs').insert({
+        operation_type: 'parse_email_success',
+        status: 'success',
+        entity_id: null,
+        details: {
+          from_email,
+          subject: subject?.substring(0, 100),
+          email_type: parsed.email_type,
+          sender_bank: parsed.sender_bank,
+          merchant: parsed.merchant,
+          amount: parsed.amount,
+          is_expense: parsed.is_expense,
+        },
+      }).catch(err => console.log('Failed to log parse success:', err))
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -386,6 +410,21 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Function error:', error)
+    
+    // Log error to activity_logs
+    if (supabaseUrl && supabaseServiceKey) {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+      const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
+      
+      await logSupabase.from('activity_logs').insert({
+        operation_type: 'parse_email_error',
+        status: 'error',
+        entity_id: null,
+        details: {},
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(err => console.log('Failed to log parse error:', err))
+    }
+    
     return new Response(
       JSON.stringify({ success: false, error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

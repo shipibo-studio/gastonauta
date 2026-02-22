@@ -166,7 +166,8 @@ async function sendNotificationEmail(
 async function categorizeTransaction(
   bodyPlain: string,
   merchant: string | null,
-  amount: number | null
+  amount: number | null,
+  transactionId?: string
 ): Promise<{ category: string; confidence: number; model: string } | null> {
   const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -229,6 +230,17 @@ Determine the category:`
     if (!response.ok) {
       const error = await response.text()
       console.error('OpenRouter API error:', error)
+      // Log error
+      if (supabaseUrl && supabaseServiceKey) {
+        const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
+        await logSupabase.from('activity_logs').insert({
+          operation_type: 'categorize_transaction_error',
+          status: 'error',
+          entity_id: transactionId || null,
+          details: { merchant, amount, error: error.substring(0, 500) },
+          error_message: error.substring(0, 1000),
+        })
+      }
       return null
     }
 
@@ -245,6 +257,17 @@ Determine the category:`
       ? Math.min(1, usage.completion_tokens / 100)
       : 0.5
 
+    // Log success
+    if (supabaseUrl && supabaseServiceKey) {
+      const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
+      await logSupabase.from('activity_logs').insert({
+        operation_type: 'categorize_transaction_success',
+        status: 'success',
+        entity_id: transactionId || null,
+        details: { merchant, amount, category, model: data.model || llmModel, confidence },
+      })
+    }
+
     return {
       category,
       confidence,
@@ -252,6 +275,17 @@ Determine the category:`
     }
   } catch (error) {
     console.error('Error in categorization:', error)
+    // Log error
+    if (supabaseUrl && supabaseServiceKey) {
+      const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
+      await logSupabase.from('activity_logs').insert({
+        operation_type: 'categorize_transaction_error',
+        status: 'error',
+        entity_id: transactionId || null,
+        details: { merchant, amount },
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
     return null
   }
 }
@@ -432,6 +466,20 @@ Deno.serve(async (req) => {
       }
       console.error('Database error:', error)
       
+      // Log to activity_logs
+      await supabase.from('activity_logs').insert({
+        operation_type: 'webhook_email_error',
+        status: 'error',
+        entity_id: emailData.message_id,
+        details: { 
+          merchant: parsedData?.merchant, 
+          amount: parsedData?.amount,
+          email_type: parsedData?.email_type,
+          sender_bank: parsedData?.sender_bank
+        },
+        error_message: error.message,
+      })
+      
       // Send error notification
       await sendNotificationEmail('error', {
         messageId: emailData.message_id,
@@ -444,6 +492,22 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Log success
+    await supabase.from('activity_logs').insert({
+      operation_type: 'webhook_email_success',
+      status: 'success',
+      entity_id: emailData.message_id,
+      details: { 
+        merchant: parsedData.merchant, 
+        amount: parsedData.amount,
+        email_type: parsedData.email_type,
+        sender_bank: parsedData.sender_bank,
+        customer_name: parsedData.customer_name,
+        account_last4: parsedData.account_last4,
+        transaction_date: parsedData.transaction_date
+      },
+    })
+
     // Get the inserted transaction ID
     const transactionId = data?.[0]?.id
 
@@ -453,7 +517,8 @@ Deno.serve(async (req) => {
       categorizationResult = await categorizeTransaction(
         emailData.body_plain,
         parsedData.merchant,
-        parsedData.amount
+        parsedData.amount,
+        transactionId
       )
 
       // Update transaction with categorization if successful

@@ -458,6 +458,21 @@ export default function GastosPage() {
         throw updateError;
       }
       
+      // Log the update operation
+      await supabase.from('activity_logs').insert({
+        operation_type: 'expense_update',
+        status: 'success',
+        entity_id: editingId,
+        user_id: session.user.id,
+        details: {
+          merchant: editForm.merchant,
+          amount: editForm.amount,
+          category_id: categoryIdToSave,
+          transaction_date: editForm.transaction_date,
+          description: editForm.description,
+        },
+      });
+      
       await fetchTransactions();
       setEditingId(null);
       setEditForm({});
@@ -496,6 +511,15 @@ export default function GastosPage() {
         console.error('Supabase delete error:', deleteError);
         throw deleteError;
       }
+      
+      // Log the delete operation
+      await supabase.from('activity_logs').insert({
+        operation_type: 'expense_delete',
+        status: 'success',
+        entity_id: deletingId,
+        user_id: session.user.id,
+        details: {},
+      });
       
       await fetchTransactions();
       setDeletingId(null);
