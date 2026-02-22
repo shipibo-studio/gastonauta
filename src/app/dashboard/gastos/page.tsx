@@ -19,8 +19,15 @@ import {
   Check,
   Brain,
   Loader2,
-  XCircle
+  XCircle,
+  Calendar
 } from "lucide-react";
+
+interface Category {
+  id: string;
+  name: string;
+  total: number;
+}
 
 interface Transaction {
   id: string;
@@ -45,6 +52,7 @@ interface Transaction {
   categorized_at: string | null;
   categorization_model: string | null;
   categorization_confidence: number | null;
+  description: string | null;
   created_at: string;
 }
 
@@ -72,6 +80,19 @@ export default function GastosPage() {
   // Unique categories for filter dropdown
   const [categories, setCategories] = useState<string[]>([]);
 
+  // Month filter
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  // Available months (fetched from database)
+  const [availableMonths, setAvailableMonths] = useState<string[]>(['2026-02']);
+
+  // Category summary data
+  const [categorySummary, setCategorySummary] = useState<Category[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
   // Edit modal
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Transaction>>({});
@@ -85,7 +106,6 @@ export default function GastosPage() {
   const [recategorizingId, setRecategorizingId] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  // Fetch categories on mount
   useEffect(() => {
     async function fetchCategories() {
       const { data } = await supabase
@@ -98,6 +118,7 @@ export default function GastosPage() {
       }
     }
     fetchCategories();
+    fetchAvailableMonths();
   }, []);
 
   useEffect(() => {
@@ -107,6 +128,16 @@ export default function GastosPage() {
       }
     });
   }, [router]);
+
+  // Initialize on mount
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  // Update summary when month changes
+  useEffect(() => {
+    fetchCategorySummary();
+  }, [selectedMonth]);
 
   useEffect(() => {
     fetchTransactions();
@@ -118,7 +149,7 @@ export default function GastosPage() {
       setPage(1);
     }
     fetchTransactions();
-  }, [searchTerm, categoryFilter]);
+  }, [searchTerm, categoryFilter, selectedMonth]);
 
   async function fetchTransactions() {
     setLoading(true);
@@ -160,6 +191,14 @@ export default function GastosPage() {
         if (categoryData) {
           query = query.eq('category_id', categoryData.id);
         }
+      }
+
+      // Apply month filter
+      if (selectedMonth) {
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const startDate = new Date(year, month - 1, 1).toISOString();
+        const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+        query = query.gte('transaction_date', startDate).lte('transaction_date', endDate);
       }
       
       // Apply sorting
@@ -218,6 +257,108 @@ export default function GastosPage() {
     fetchTransactions();
   }
 
+  async function fetchAvailableMonths() {
+    try {
+      // Get distinct months from transactions
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('transaction_date')
+        .not('transaction_date', 'is', null);
+
+      if (error) throw error;
+
+      // Extract unique year-month combinations
+      const monthsSet = new Set<string>();
+      data?.forEach(tx => {
+        if (tx.transaction_date) {
+          const date = new Date(tx.transaction_date);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          monthsSet.add(monthKey);
+        }
+      });
+
+      // Sort months descending
+      const sortedMonths = Array.from(monthsSet).sort((a, b) => b.localeCompare(a));
+      
+      // Ensure at least Feb 2026 is available
+      if (!sortedMonths.includes('2026-02')) {
+        sortedMonths.unshift('2026-02');
+      }
+      
+      setAvailableMonths(sortedMonths);
+
+      // Set default to current month or latest available
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      if (sortedMonths.includes(currentMonth)) {
+        setSelectedMonth(currentMonth);
+      } else if (sortedMonths.length > 0) {
+        setSelectedMonth(sortedMonths[0]);
+      }
+    } catch (err) {
+      console.error('Error fetching available months:', err);
+    }
+  }
+
+  async function fetchCategorySummary() {
+    setSummaryLoading(true);
+    try {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1).toISOString();
+      const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+      // Get all categories
+      const { data: allCategories, error: catError } = await supabase
+        .from('categories')
+        .select('id, name')
+        .order('name');
+
+      if (catError) throw catError;
+
+      // Get transactions for the selected month
+      const { data: transactions, error: txError } = await supabase
+        .from('transactions')
+        .select('category_id, amount')
+        .gte('transaction_date', startDate)
+        .lte('transaction_date', endDate)
+        .eq('is_expense', true);
+
+      if (txError) throw txError;
+
+      // Calculate totals per category
+      const categoryTotals = new Map<string, number>();
+      
+      // Initialize all categories with 0
+      allCategories?.forEach(cat => {
+        categoryTotals.set(cat.id, 0);
+      });
+
+      // Sum up amounts per category
+      transactions?.forEach(tx => {
+        if (tx.category_id && tx.amount) {
+          const current = categoryTotals.get(tx.category_id) || 0;
+          categoryTotals.set(tx.category_id, current + tx.amount);
+        }
+      });
+
+      // Build summary with all categories including $0
+      const summary: Category[] = allCategories?.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        total: categoryTotals.get(cat.id) || 0
+      })) || [];
+
+      // Sort by total descending
+      summary.sort((a, b) => b.total - a.total);
+
+      setCategorySummary(summary);
+    } catch (err) {
+      console.error('Error fetching category summary:', err);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
   function formatEmailType(emailType: string | null): string {
     if (!emailType) return '-';
     
@@ -260,6 +401,7 @@ export default function GastosPage() {
       amount: tx.amount,
       category_id: tx.category_name || tx.category_id,
       transaction_date: tx.transaction_date,
+      description: tx.description,
     });
   }
 
@@ -307,6 +449,7 @@ export default function GastosPage() {
           amount: editForm.amount,
           category_id: categoryIdToSave,
           transaction_date: editForm.transaction_date,
+          description: editForm.description,
         })
         .eq("id", editingId);
       
@@ -464,6 +607,23 @@ export default function GastosPage() {
             </select>
           </div>
           
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="pl-10 pr-8 py-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all appearance-none cursor-pointer"
+            >
+              {availableMonths.map(month => {
+                const [year, m] = month.split('-');
+                const monthName = new Date(parseInt(year), parseInt(m) - 1).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+                return (
+                  <option key={month} value={month}>{monthName}</option>
+                );
+              })}
+            </select>
+          </div>
+          
           <button
             onClick={resetFilters}
             className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
@@ -526,6 +686,9 @@ export default function GastosPage() {
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">
                     Título
                   </th>
+                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
+                    Descripción
+                  </th>
                   <th className="px-2 py-2 text-center text-stone-300 font-medium">
                     Acciones
                   </th>
@@ -534,19 +697,19 @@ export default function GastosPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={9} className="px-2 py-8 text-center text-stone-400">
                       <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={8} className="px-2 py-8 text-center text-red-400">
+                    <td colSpan={9} className="px-2 py-8 text-center text-red-400">
                       Error: {error}
                     </td>
                   </tr>
                 ) : transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={9} className="px-2 py-8 text-center text-stone-400">
                       No hay transacciones
                     </td>
                   </tr>
@@ -586,6 +749,9 @@ export default function GastosPage() {
                       </td>
                       <td className="px-2 py-2 text-stone-200 max-w-[200px] truncate">
                         {tx.subject || "-"}
+                      </td>
+                      <td className="px-2 py-2 text-stone-400 max-w-[150px] truncate text-xs">
+                        {tx.description || "-"}
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex gap-1 justify-center">
@@ -700,6 +866,17 @@ export default function GastosPage() {
                   value={editForm.transaction_date ? editForm.transaction_date.slice(0, 16) : ''}
                   onChange={(e) => setEditForm({...editForm, transaction_date: e.target.value ? new Date(e.target.value).toISOString() : null})}
                   className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-stone-400 text-sm mb-1">Descripción</label>
+                <input
+                  type="text"
+                  value={editForm.description || ''}
+                  onChange={(e) => setEditForm({...editForm, description: e.target.value || null})}
+                  placeholder="Agregar descripción..."
+                  className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
                 />
               </div>
             </div>
