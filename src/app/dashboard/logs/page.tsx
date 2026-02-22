@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Sidebar } from "../../components/Sidebar";
+import { useToast } from "../../components/Toast";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
@@ -12,7 +13,9 @@ import {
   Pencil,
   Trash2,
   X,
-  Check
+  Check,
+  Brain,
+  Loader2
 } from "lucide-react";
 
 interface Transaction {
@@ -33,6 +36,7 @@ interface Transaction {
   email_type: string | null;
   is_expense: boolean;
   category_id: string | null;
+  category_name: string | null; // Add category name field
   is_categorized: boolean | null;
   categorized_at: string | null;
   categorization_model: string | null;
@@ -43,21 +47,12 @@ interface Transaction {
 type SortField = "transaction_date" | "amount" | "merchant" | "created_at" | "email_date";
 type SortOrder = "asc" | "desc";
 
-const CATEGORIES = [
-  'Supermercado',
-  'Combustible',
-  'Restaurante',
-  'Transporte',
-  'Servicios',
-  'Entretenimiento',
-  'Otros',
-];
-
 export default function LogsPage() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]); // Store category names for select
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -66,7 +61,7 @@ export default function LogsPage() {
   
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortField, setSortField] = useState<SortField>("transaction_date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   
   // Edit modal
@@ -77,6 +72,25 @@ export default function LogsPage() {
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Re-categorize with AI
+  const [recategorizingId, setRecategorizingId] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  // Fetch categories on mount
+  useEffect(() => {
+    async function fetchCategories() {
+      const { data } = await supabase
+        .from('categories')
+        .select('name')
+        .order('name');
+      
+      if (data) {
+        setCategoryOptions(data.map(c => c.name));
+      }
+    }
+    fetchCategories();
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -102,6 +116,21 @@ export default function LogsPage() {
     setError(null);
     
     try {
+      // First, fetch all categories to create a lookup map
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('id, name');
+      
+      if (categoriesError) throw categoriesError;
+      
+      // Create a map of category id -> category name
+      const categoryMap = new Map<string, string>();
+      const categoryNameToId = new Map<string, string>();
+      categoriesData?.forEach(cat => {
+        categoryMap.set(cat.id, cat.name);
+        categoryNameToId.set(cat.name, cat.id);
+      });
+      
       let query = supabase
         .from("transactions")
         .select("*", { count: "exact" });
@@ -120,7 +149,13 @@ export default function LogsPage() {
       
       if (fetchError) throw fetchError;
       
-      setTransactions(data || []);
+      // Add category name to each transaction
+      const transactionsWithCategoryNames = (data || []).map(tx => ({
+        ...tx,
+        category_name: tx.category_id ? categoryMap.get(tx.category_id) || null : null
+      }));
+      
+      setTransactions(transactionsWithCategoryNames);
       setTotalCount(count || 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -178,7 +213,7 @@ export default function LogsPage() {
     setEditForm({
       merchant: tx.merchant,
       amount: tx.amount,
-      category_id: tx.category_id,
+      category_id: tx.category_name || tx.category_id, // Use name if available, fallback to id
       transaction_date: tx.transaction_date,
     });
   }
@@ -201,20 +236,39 @@ export default function LogsPage() {
         return;
       }
       
-      console.log('User authenticated:', session.user.id);
-      console.log('Updating transaction:', editingId, editForm);
+      // Get category ID from name
+      let categoryIdToSave = editForm.category_id;
+      // Check if it's a name (not a UUID) - UUIDs have specific format with multiple dashes
+      const isUUID = editForm.category_id && 
+        editForm.category_id.includes('-') && 
+        editForm.category_id.split('-').length === 5;
+      
+      if (editForm.category_id && !isUUID) {
+        // It's a name, not an ID - convert to ID
+        // Get all categories and find matching one manually (case-insensitive)
+        const { data: categoriesData } = await supabase
+          .from('categories')
+          .select('id, name');
+        
+        // Find matching category manually (case-insensitive)
+        const foundCategory = categoriesData?.find(
+          cat => cat.name.toLowerCase() === editForm.category_id?.toLowerCase()
+        );
+        
+        if (foundCategory) {
+          categoryIdToSave = foundCategory.id;
+        }
+      }
       
       const { error: updateError } = await supabase
         .from("transactions")
         .update({
           merchant: editForm.merchant,
           amount: editForm.amount,
-          category_id: editForm.category_id,
+          category_id: categoryIdToSave,
           transaction_date: editForm.transaction_date,
         })
         .eq("id", editingId);
-      
-      console.log('Update result:', { error: updateError });
       
       if (updateError) {
         console.error('Supabase update error:', updateError);
@@ -269,6 +323,72 @@ export default function LogsPage() {
       alert(err instanceof Error ? err.message : 'Error eliminando');
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function recategorizeWithAI(txId: string) {
+    setRecategorizingId(txId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('No estás autenticado. Por favor, inicia sesión.');
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/categorize-transaction`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          },
+          body: JSON.stringify({ transaction_id: txId }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al categorizar');
+      }
+
+      // Check if any transaction failed
+      const failedResults = result.results?.filter((r: { success: boolean }) => !r.success) || [];
+      if (failedResults.length > 0) {
+        let errorMsg = failedResults[0]?.error || 'Error al categorizar con IA';
+        // Extract message from OpenRouter error response if it's a JSON string
+        try {
+          const parsedError = JSON.parse(errorMsg.replace('OpenRouter API error: ', ''));
+          errorMsg = parsedError.error?.message || parsedError.message || errorMsg;
+        } catch {
+          // Not JSON, use as is
+        }
+        showToast(errorMsg, 'error');
+      } else {
+        // Check if categorization was done by keywords or AI
+        const successfulResults = result.results?.filter((r: { success: boolean }) => r.success) || [];
+        const keywordResults = successfulResults.filter((r: { model: string }) => r.model === 'keyword');
+        const aiResults = successfulResults.filter((r: { model: string }) => r.model !== 'keyword');
+        
+        if (keywordResults.length > 0 && aiResults.length === 0) {
+          showToast(`Categorizado por palabras clave: ${keywordResults[0].category}`, 'success');
+        } else if (aiResults.length > 0) {
+          showToast(`Categorizado con IA: ${aiResults[0].category}`, 'success');
+        } else {
+          showToast('Transacción categorizada exitosamente', 'success');
+        }
+      }
+
+      // Refresh data
+      await fetchTransactions();
+    } catch (err) {
+      console.error('Error re-categorizing:', err);
+      showToast(err instanceof Error ? err.message : 'Error al categorizar con IA', 'error');
+    } finally {
+      setRecategorizingId(null);
     }
   }
 
@@ -331,25 +451,26 @@ export default function LogsPage() {
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Categoría</th>
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Banco</th>
                   <th className="px-2 py-2 text-left text-stone-300 font-medium">Tipo</th>
+                  <th className="px-2 py-2 text-left text-stone-300 font-medium">Título</th>
                   <th className="px-2 py-2 text-center text-stone-300 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={8} className="px-2 py-8 text-center text-stone-400">
                       <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-red-400">
+                    <td colSpan={8} className="px-2 py-8 text-center text-red-400">
                       Error: {error}
                     </td>
                   </tr>
                 ) : transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-stone-400">
+                    <td colSpan={8} className="px-2 py-8 text-center text-stone-400">
                       No hay transacciones
                     </td>
                   </tr>
@@ -369,9 +490,9 @@ export default function LogsPage() {
                         {tx.merchant || "-"}
                       </td>
                       <td className="px-2 py-2">
-                        {tx.category_id ? (
+                        {tx.category_name ? (
                           <span className="px-2 py-0.5 rounded-full bg-violet-400/20 text-violet-400 text-xs font-medium">
-                            {tx.category_id}
+                            {tx.category_name}
                           </span>
                         ) : tx.is_categorized === false ? (
                           <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400 text-xs">
@@ -387,8 +508,23 @@ export default function LogsPage() {
                       <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
                         {formatEmailType(tx.email_type)}
                       </td>
+                      <td className="px-2 py-2 text-stone-200 max-w-[200px] truncate">
+                        {tx.subject || "-"}
+                      </td>
                       <td className="px-2 py-2">
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 justify-center">
+                          <button
+                            onClick={() => recategorizeWithAI(tx.id)}
+                            disabled={recategorizingId === tx.id}
+                            className="p-1 rounded hover:bg-emerald-400/20 text-emerald-400 transition-colors hover:cursor-pointer disabled:opacity-50"
+                            title="Categorizar con IA"
+                          >
+                            {recategorizingId === tx.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Brain className="w-3 h-3" />
+                            )}
+                          </button>
                           <button
                             onClick={() => startEdit(tx)}
                             className="p-1 rounded hover:bg-cyan-400/20 text-cyan-400 transition-colors hover:cursor-pointer"
@@ -475,7 +611,7 @@ export default function LogsPage() {
                   className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
                 >
                   <option value="">Seleccionar...</option>
-                  {CATEGORIES.map(cat => (
+                  {categoryOptions.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>

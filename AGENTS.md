@@ -34,6 +34,10 @@
 - Ejecuta las migraciones en orden numérico desde el SQL Editor de Supabase o via CLI.
 - Cada migración debe ser idempotente (usar `IF NOT EXISTS`, `CREATE OR REPLACE`, etc.).
 
+## Supabase CLI
+
+- **Usar `supabase` directamente:** NO usar `npx supabase`. Ejecutar los comandos de Supabase CLI directamente como `supabase functions deploy`, `supabase db push`, etc. Asegúrate de tener Supabase instalado globalmente o disponible en tu PATH.
+
 ## Edge Functions (Supabase)
 
 - Las Edge Functions se crean en `supabase/functions/nombre-funcion/index.ts`.
