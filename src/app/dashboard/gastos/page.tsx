@@ -391,6 +391,7 @@ export default function GastosPage() {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
     });
   }
 
@@ -445,10 +446,7 @@ export default function GastosPage() {
       const { error: updateError } = await supabase
         .from("transactions")
         .update({
-          merchant: editForm.merchant,
-          amount: editForm.amount,
           category_id: categoryIdToSave,
-          transaction_date: editForm.transaction_date,
           description: editForm.description,
         })
         .eq("id", editingId);
@@ -465,10 +463,7 @@ export default function GastosPage() {
         entity_id: editingId,
         user_id: session.user.id,
         details: {
-          merchant: editForm.merchant,
-          amount: editForm.amount,
           category_id: categoryIdToSave,
-          transaction_date: editForm.transaction_date,
           description: editForm.description,
         },
       });
@@ -846,7 +841,7 @@ export default function GastosPage() {
       {editingId && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-stone-800 border border-stone-600 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <h2 className="text-xl font-serif text-stone-100 mb-4">Editar Transacción</h2>
+            <h2 className="text-2xl font-serif text-stone-100 mb-4">Editar Transacción</h2>
             
             <div className="space-y-4">
               <div>
@@ -854,18 +849,25 @@ export default function GastosPage() {
                 <input
                   type="text"
                   value={editForm.merchant || ''}
-                  onChange={(e) => setEditForm({...editForm, merchant: e.target.value})}
-                  className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+                  disabled
+                  className="w-full px-3 py-2 bg-stone-700/30 border border-stone-600 rounded-lg text-stone-400 cursor-not-allowed"
                 />
               </div>
               
               <div>
                 <label className="block text-stone-400 text-sm mb-1">Monto</label>
+                <div className="w-full px-3 py-2 bg-stone-700/30 border border-stone-600 rounded-lg text-stone-400 cursor-not-allowed">
+                  {editForm.amount ? new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(editForm.amount) : '-'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-stone-400 text-sm mb-1">Fecha de Transacción</label>
                 <input
-                  type="number"
-                  value={editForm.amount ?? ''}
-                  onChange={(e) => setEditForm({...editForm, amount: e.target.value === '' ? null : parseFloat(e.target.value)})}
-                  className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+                  type="datetime-local"
+                  value={editForm.transaction_date ? editForm.transaction_date.slice(0, 16) : ''}
+                  disabled
+                  className="w-full px-3 py-2 bg-stone-700/30 border border-stone-600 rounded-lg text-stone-400 cursor-not-allowed"
                 />
               </div>
               
@@ -881,16 +883,6 @@ export default function GastosPage() {
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-              </div>
-              
-              <div>
-                <label className="block text-stone-400 text-sm mb-1">Fecha de Transacción</label>
-                <input
-                  type="datetime-local"
-                  value={editForm.transaction_date ? editForm.transaction_date.slice(0, 16) : ''}
-                  onChange={(e) => setEditForm({...editForm, transaction_date: e.target.value ? new Date(e.target.value).toISOString() : null})}
-                  className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
-                />
               </div>
               
               <div>
