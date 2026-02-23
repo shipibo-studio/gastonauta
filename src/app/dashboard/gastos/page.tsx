@@ -1,18 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ReactNode } from "react";
 import { Sidebar } from "../../components/Sidebar";
 import { ConfirmModal } from "../../components/ConfirmModal";
+import { DataTable } from "../../components/DataTable";
 import { useToast } from "../../components/Toast";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
   Search, 
-  ChevronLeft, 
-  ChevronRight,
-  ArrowUpDown,
-  Filter,
   RefreshCw,
+  Filter,
   Pencil,
   Trash2,
   X,
@@ -20,7 +19,10 @@ import {
   Brain,
   Loader2,
   XCircle,
-  Calendar
+  Calendar,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 
 interface Category {
@@ -591,6 +593,107 @@ export default function GastosPage() {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
+  // Column definitions - must be inside component to access state and functions
+  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; render: (row: Transaction) => React.ReactNode }[] = [
+    {
+      key: 'fecha',
+      header: 'Fecha',
+      sortable: true,
+      sortableField: 'transaction_date',
+      render: (row) => formatDate(row.transaction_date || row.created_at),
+    },
+    {
+      key: 'amount',
+      header: 'Monto',
+      sortable: true,
+      sortableField: 'amount',
+      align: 'right',
+      render: (row) => formatAmount(row.amount),
+    },
+    {
+      key: 'merchant',
+      header: 'Comercio',
+      sortable: true,
+      sortableField: 'merchant',
+      width: '150px',
+      render: (row) => row.merchant || '-',
+    },
+    {
+      key: 'categoria',
+      header: 'Categoría',
+      render: (row) => row.category_name ? (
+        <span className="px-2 py-0.5 rounded-full bg-violet-400/20 text-violet-400 font-medium">
+          {row.category_name}
+        </span>
+      ) : row.is_categorized === false ? (
+        <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400">
+          Sin categorizar
+        </span>
+      ) : (
+        <span className="text-stone-500">-</span>
+      ),
+    },
+    {
+      key: 'banco',
+      header: 'Banco',
+      width: '100px',
+      render: (row) => row.sender_bank || '-',
+    },
+    {
+      key: 'tipo',
+      header: 'Tipo',
+      width: '100px',
+      render: (row) => formatEmailType(row.email_type),
+    },
+    {
+      key: 'asunto',
+      header: 'Título',
+      width: '200px',
+      render: (row) => row.subject || '-',
+    },
+    {
+      key: 'descripcion',
+      header: 'Descripción',
+      width: '150px',
+      render: (row) => row.description || '-',
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      align: 'center',
+      render: (row) => (
+        <div className="flex gap-1 justify-center">
+          <button
+            onClick={(e) => { e.stopPropagation(); recategorizeWithAI(row.id); }}
+            disabled={recategorizingId === row.id}
+            className="p-1 rounded hover:bg-emerald-400/20 text-emerald-400 transition-colors hover:cursor-pointer disabled:opacity-50"
+            title="Categorizar con IA"
+          >
+            {recategorizingId === row.id ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Brain className="w-3 h-3" />
+            )}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); startEdit(row); }}
+            className="p-1 rounded hover:bg-cyan-400/20 text-cyan-400 transition-colors hover:cursor-pointer"
+            title="Editar"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setDeletingId(row.id); }}
+            className="p-1 rounded hover:bg-red-400/20 text-red-400 transition-colors hover:cursor-pointer"
+            title="Eliminar"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans">
       <Sidebar />
@@ -663,7 +766,7 @@ export default function GastosPage() {
         {/* Table */}
         <div className="flex-1 overflow-auto rounded-xl border border-stone-600/30 bg-stone-800/30 backdrop-blur-xl">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-fulls">
               <thead className="bg-stone-800/50 sticky top-0">
                 <tr className="border-b border-stone-600/30">
                   <th 
@@ -753,11 +856,11 @@ export default function GastosPage() {
                             {tx.category_name}
                           </span>
                         ) : tx.is_categorized === false ? (
-                          <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400 text-xs">
+                          <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400">
                             Sin categorizar
                           </span>
                         ) : (
-                          <span className="text-stone-500 text-xs">-</span>
+                          <span className="text-stone-500">-</span>
                         )}
                       </td>
                       <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
@@ -769,7 +872,7 @@ export default function GastosPage() {
                       <td className="px-2 py-2 text-stone-200 max-w-[200px] truncate">
                         {tx.subject || "-"}
                       </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[150px] truncate text-xs">
+                      <td className="px-2 py-2 text-stone-400 max-w-[150px] truncate">
                         {tx.description || "-"}
                       </td>
                       <td className="px-2 py-2">

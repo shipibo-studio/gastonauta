@@ -1,21 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import { Sidebar } from "../../components/Sidebar";
+import { DataTable } from "../../components/DataTable";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
   Search, 
-  ChevronLeft, 
-  ChevronRight,
-  ArrowUpDown,
   Filter,
   RefreshCw,
   CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Info,
-  Loader2
+  XCircle
 } from "lucide-react";
 
 interface ActivityLog {
@@ -149,11 +144,11 @@ export default function LogsPage() {
     }
   }
 
-  function handleSort(field: "created_at") {
+  function handleSort(field: string) {
     if (sortField === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
-      setSortField(field);
+      setSortField(field as "created_at");
       setSortOrder("desc");
     }
   }
@@ -203,6 +198,53 @@ export default function LogsPage() {
   }
 
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  // Column definitions
+  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; render: (row: ActivityLog) => ReactNode }[] = [
+    {
+      key: 'estado',
+      header: 'Estado',
+      align: 'center',
+      width: '60px',
+      render: (row) => row.status === 'success' 
+        ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" />
+        : <XCircle className="w-4 h-4 text-red-400 mx-auto" />,
+    },
+    {
+      key: 'fecha',
+      header: 'Fecha/Hora',
+      sortable: true,
+      sortableField: 'created_at',
+      render: (row) => formatDate(row.created_at),
+    },
+    {
+      key: 'operacion',
+      header: 'Operación',
+      render: (row) => (
+        <span className={`px-2 py-0.5 rounded-full font-medium ${operationColors[row.operation_type] || 'bg-stone-400/20 text-stone-400'}`}>
+          {operationLabels[row.operation_type] || row.operation_type}
+        </span>
+      ),
+    },
+    {
+      key: 'entity_id',
+      header: 'Entity ID',
+      width: '150px',
+      render: (row) => row.entity_id || '-',
+    },
+    {
+      key: 'detalles',
+      header: 'Detalles',
+      width: '200px',
+      render: (row) => formatDetails(row.details),
+    },
+    {
+      key: 'error',
+      header: 'Error',
+      width: '150px',
+      render: (row) => row.error_message || '-',
+    },
+  ];
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans">
@@ -268,115 +310,22 @@ export default function LogsPage() {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-auto rounded-xl border border-stone-600/30 bg-stone-800/30 backdrop-blur-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-stone-800/50 sticky top-0">
-                <tr className="border-b border-stone-600/30">
-                  <th className="px-2 py-2 text-center text-stone-300 font-medium w-12">
-                    Estado
-                  </th>
-                  <th 
-                    className="px-2 py-2 text-left text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
-                    onClick={() => handleSort('created_at')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Fecha/Hora
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Operación
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Entity ID
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Detalles
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Error
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="px-2 py-8 text-center text-stone-400">
-                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                    </td>
-                  </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan={5} className="px-2 py-8 text-center text-red-400">
-                      Error: {error}
-                    </td>
-                  </tr>
-                ) : logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-2 py-8 text-center text-stone-400">
-                      No hay logs registrados
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((log) => (
-                    <tr 
-                      key={log.id} 
-                      className="border-b border-stone-700/30 hover:bg-stone-700/20 transition-colors"
-                    >
-                      <td className="px-2 py-2 text-center">
-                        {getStatusIcon(log.status)}
-                      </td>
-                      <td className="px-2 py-2 text-stone-200 whitespace-nowrap">
-                        {formatDate(log.created_at)}
-                      </td>
-                      <td className="px-2 py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${operationColors[log.operation_type] || 'bg-stone-400/20 text-stone-400'}`}>
-                          {operationLabels[log.operation_type] || log.operation_type}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[150px] truncate font-mono text-[10px]">
-                        {log.entity_id || '-'}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[200px] truncate text-[10px]">
-                        {formatDetails(log.details)}
-                      </td>
-                      <td className="px-2 py-2 text-red-400 max-w-[150px] truncate text-[10px]">
-                        {log.error_message || '-'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between">
-          <div className="text-stone-400 text-sm">
-            Mostrando {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, totalCount)} de {totalCount} resultados
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-stone-300 text-sm">
-              Página {page} de {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        <DataTable
+          data={logs}
+          columns={columns}
+          loading={loading}
+          error={error}
+          emptyMessage="No hay logs registrados"
+          page={page}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          sortField={sortField}
+          sortOrder={sortOrder}
+          onSort={handleSort}
+          isRefreshing={loading}
+          onRefresh={fetchLogs}
+        />
       </main>
     </div>
   );
