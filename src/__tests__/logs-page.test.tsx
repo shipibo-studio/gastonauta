@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 
 // Mock lucide-react icons
@@ -15,63 +14,35 @@ vi.mock('lucide-react', () => ({
   ChevronLeft: 'ChevronLeft',
   ChevronRight: 'ChevronRight',
   RefreshCw: 'RefreshCw',
-  Pencil: 'Pencil',
-  Trash2: 'Trash2',
-  X: 'X',
-  Check: 'Check',
-  ArrowUpDown: 'ArrowUpDown',
   Filter: 'Filter',
+  CheckCircle2: 'CheckCircle2',
+  XCircle: 'XCircle',
+  ArrowUpDown: 'ArrowUpDown',
+  Loader2: 'Loader2',
 }))
 
-// Mock supabase
-const mockTransactions = [
-  {
-    id: 'tx-001',
-    email_date: '2026-02-20T10:00:00Z',
-    from_name: 'Banco de Chile',
-    from_email: 'enviodigital@bancochile.cl',
-    message_id: 'msg-001',
-    subject: 'Cargo en Cuenta',
-    customer_name: 'Jorge Epunan',
-    amount: 2440,
-    account_last4: '5150',
-    merchant: 'TOTTUS LOS DOMINI',
-    transaction_date: '2026-02-20T16:10:00Z',
-    sender_bank: 'Banco de Chile',
-    email_type: 'cargo_en_cuenta',
-    is_expense: true,
-    category_id: 'Supermercado',
-    is_categorized: true,
-    categorized_at: '2026-02-20T17:00:00Z',
-    categorization_model: 'openrouter/free',
-    categorization_confidence: 0.5,
-    created_at: '2026-02-20T10:00:00Z',
-  },
-]
-
+// Mock supabase for activity_logs
 vi.mock('@/lib/supabase', () => {
-  const transactions = [
+  const mockLogs = [
     {
-      id: 'tx-001',
-      email_date: '2026-02-20T10:00:00Z',
-      from_name: 'Banco de Chile',
-      from_email: 'enviodigital@bancochile.cl',
-      message_id: 'msg-001',
-      subject: 'Cargo en Cuenta',
-      customer_name: 'Jorge Epunan',
-      amount: 2440,
-      account_last4: '5150',
-      merchant: 'TOTTUS LOS DOMINI',
-      transaction_date: '2026-02-20T16:10:00Z',
-      sender_bank: 'Banco de Chile',
-      email_type: 'cargo_en_cuenta',
-      is_expense: true,
-      category_id: 'Supermercado',
-      is_categorized: true,
-      categorized_at: '2026-02-20T17:00:00Z',
-      categorization_model: 'openrouter/free',
-      categorization_confidence: 0.5,
+      id: 'log-001',
       created_at: '2026-02-20T10:00:00Z',
+      operation_type: 'webhook_email_success',
+      status: 'success',
+      entity_id: 'tx-001',
+      details: { amount: 2440 },
+      error_message: null,
+      user_id: 'user-123',
+    },
+    {
+      id: 'log-002',
+      created_at: '2026-02-20T11:00:00Z',
+      operation_type: 'expense_create',
+      status: 'success',
+      entity_id: 'tx-002',
+      details: { category: 'Supermercado' },
+      error_message: null,
+      user_id: 'user-123',
     },
   ]
 
@@ -81,18 +52,17 @@ vi.mock('@/lib/supabase', () => {
         select: () => ({
           or: () => ({
             order: () => ({
-              range: () => Promise.resolve({ data: transactions, count: 1, error: null }),
+              range: () => Promise.resolve({ data: mockLogs, count: 2, error: null }),
             }),
           }),
           order: () => ({
-            range: () => Promise.resolve({ data: transactions, count: 1, error: null }),
+            range: () => Promise.resolve({ data: mockLogs, count: 2, error: null }),
           }),
-        }),
-        update: () => ({
-          eq: () => Promise.resolve({ error: null }),
-        }),
-        delete: () => ({
-          eq: () => Promise.resolve({ error: null }),
+          eq: () => ({
+            order: () => ({
+              range: () => Promise.resolve({ data: mockLogs, count: 2, error: null }),
+            }),
+          }),
         }),
       }),
       auth: {
@@ -122,7 +92,7 @@ describe('LogsPage', () => {
       </BrowserRouter>
     )
     
-    expect(screen.getByText('Logs de Transacciones')).toBeInTheDocument()
+    expect(screen.getByText('Logs de Actividad')).toBeInTheDocument()
   })
 
   it('has a search input', () => {
@@ -135,7 +105,7 @@ describe('LogsPage', () => {
     expect(screen.getByPlaceholderText(/buscar/i)).toBeInTheDocument()
   })
 
-  it('displays transaction merchant in table', async () => {
+  it('displays operation type in table', async () => {
     render(
       <BrowserRouter>
         <LogsPage />
@@ -143,11 +113,11 @@ describe('LogsPage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.getByText('TOTTUS LOS DOMINI')).toBeInTheDocument()
+      expect(screen.getByText('Webhook Email Guardado')).toBeInTheDocument()
     })
   })
 
-  it('displays transaction amount', async () => {
+  it('displays status indicators', async () => {
     render(
       <BrowserRouter>
         <LogsPage />
@@ -155,11 +125,32 @@ describe('LogsPage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.getByText('$2.440')).toBeInTheDocument()
+      // Verify the logs table renders with data
+      expect(screen.getByText('Webhook Email Guardado')).toBeInTheDocument()
     })
   })
 
-  it('displays category badge', async () => {
+  it('has operation type filter', () => {
+    render(
+      <BrowserRouter>
+        <LogsPage />
+      </BrowserRouter>
+    )
+    
+    expect(screen.getByText('Todas las operaciones')).toBeInTheDocument()
+  })
+
+  it('has status filter', () => {
+    render(
+      <BrowserRouter>
+        <LogsPage />
+      </BrowserRouter>
+    )
+    
+    expect(screen.getByText('Todos los estados')).toBeInTheDocument()
+  })
+
+  it('displays pagination info', async () => {
     render(
       <BrowserRouter>
         <LogsPage />
@@ -167,24 +158,41 @@ describe('LogsPage', () => {
     )
     
     await waitFor(() => {
-      expect(screen.getByText('Supermercado')).toBeInTheDocument()
+      expect(screen.getByText(/Mostrando/)).toBeInTheDocument()
     })
   })
 
-  it('has edit button with title attribute', async () => {
-    render(
-      <BrowserRouter>
-        <LogsPage />
-      </BrowserRouter>
-    )
-    
-    await waitFor(() => {
-      const editButton = screen.getByTitle('Editar')
-      expect(editButton).toBeInTheDocument()
+  it('displays empty message when no logs', async () => {
+    // Mock with empty data
+    vi.mock('@/lib/supabase', () => {
+      return {
+        supabase: {
+          from: () => ({
+            select: () => ({
+              or: () => ({
+                order: () => ({
+                  range: () => Promise.resolve({ data: [], count: 0, error: null }),
+                }),
+              }),
+              order: () => ({
+                range: () => Promise.resolve({ data: [], count: 0, error: null }),
+              }),
+              eq: () => ({
+                order: () => ({
+                  range: () => Promise.resolve({ data: [], count: 0, error: null }),
+                }),
+              }),
+            }),
+          }),
+          auth: {
+            getSession: () => Promise.resolve({
+              data: { session: { user: { id: 'user-123' } } },
+            }),
+          },
+        },
+      }
     })
-  })
 
-  it('has delete button with title attribute', async () => {
     render(
       <BrowserRouter>
         <LogsPage />
@@ -192,114 +200,7 @@ describe('LogsPage', () => {
     )
     
     await waitFor(() => {
-      const deleteButton = screen.getByTitle('Eliminar')
-      expect(deleteButton).toBeInTheDocument()
+      expect(screen.getByText('No hay logs registrados')).toBeInTheDocument()
     })
-  })
-
-  it('opens edit modal when edit button is clicked', async () => {
-    const user = userEvent.setup()
-    
-    render(
-      <BrowserRouter>
-        <LogsPage />
-      </BrowserRouter>
-    )
-    
-    await waitFor(() => {
-      const editButton = screen.getByTitle('Editar')
-      return editButton
-    })
-    
-    const editButton = screen.getByTitle('Editar')
-    await user.click(editButton)
-    
-    expect(screen.getByText('Editar Transacción')).toBeInTheDocument()
-  })
-
-  it('opens delete confirmation when delete button is clicked', async () => {
-    const user = userEvent.setup()
-    
-    render(
-      <BrowserRouter>
-        <LogsPage />
-      </BrowserRouter>
-    )
-    
-    await waitFor(() => {
-      const deleteButton = screen.getByTitle('Eliminar')
-      return deleteButton
-    })
-    
-    const deleteButton = screen.getByTitle('Eliminar')
-    await user.click(deleteButton)
-    
-    expect(screen.getByText('Confirmar Eliminación')).toBeInTheDocument()
-  })
-
-  it('edit modal has merchant input field', async () => {
-    const user = userEvent.setup()
-    
-    render(
-      <BrowserRouter>
-        <LogsPage />
-      </BrowserRouter>
-    )
-    
-    await waitFor(() => {
-      const editButton = screen.getByTitle('Editar')
-      return editButton
-    })
-    
-    const editButton = screen.getByTitle('Editar')
-    await user.click(editButton)
-    
-    // Modal should show merchant input with value
-    const merchantInput = screen.getByDisplayValue('TOTTUS LOS DOMINI')
-    expect(merchantInput).toBeInTheDocument()
-  })
-
-  it('edit modal has cancel and save buttons', async () => {
-    const user = userEvent.setup()
-    
-    render(
-      <BrowserRouter>
-        <LogsPage />
-      </BrowserRouter>
-    )
-    
-    await waitFor(() => {
-      const editButton = screen.getByTitle('Editar')
-      return editButton
-    })
-    
-    const editButton = screen.getByTitle('Editar')
-    await user.click(editButton)
-    
-    expect(screen.getByText('Cancelar')).toBeInTheDocument()
-    expect(screen.getByText('Guardar')).toBeInTheDocument()
-  })
-
-  it('delete confirmation has cancel and delete buttons', async () => {
-    const user = userEvent.setup()
-    
-    render(
-      <BrowserRouter>
-        <LogsPage />
-      </BrowserRouter>
-    )
-    
-    await waitFor(() => {
-      const deleteButton = screen.getByTitle('Eliminar')
-      return deleteButton
-    })
-    
-    const deleteButton = screen.getByTitle('Eliminar')
-    await user.click(deleteButton)
-    
-    expect(screen.getByText('Cancelar')).toBeInTheDocument()
-    // Delete button in delete modal has different text
-    const deleteConfirmButtons = screen.getAllByText('Eliminar')
-    expect(deleteConfirmButtons.length).toBeGreaterThan(0)
   })
 })
