@@ -17,6 +17,7 @@ export interface Column<T> {
   align?: "left" | "center" | "right";
   width?: string;
   render?: (row: T) => ReactNode;
+  titleField?: keyof T; // Field to use for tooltip text
 }
 
 export interface DataTableProps<T> {
@@ -131,7 +132,18 @@ export function DataTable<T extends { id: string | number }>({
                   key={row.id} 
                   className="border-b border-stone-700/30 hover:bg-stone-700/20 transition-colors"
                 >
-                  {columns.map((column) => (
+                  {columns.map((column) => {
+                    // Get title for tooltip - always show tooltip
+                    const titleValue = column.titleField 
+                      ? String(row[column.titleField] ?? '')
+                      : String((row as Record<string, unknown>)[column.key] ?? "-");
+                    
+                    // Get display value
+                    const displayValue = column.render 
+                      ? column.render(row) 
+                      : String((row as Record<string, unknown>)[column.key] ?? "-");
+                    
+                    return (
                     <td
                       key={`${row.id}-${column.key}`}
                       className={`
@@ -141,12 +153,14 @@ export function DataTable<T extends { id: string | number }>({
                       `}
                       style={{ maxWidth: column.width }}
                     >
-                      {column.render 
-                        ? column.render(row) 
-                        : String((row as Record<string, unknown>)[column.key] ?? "-")
-                      }
+                      <div 
+                        className="truncate"
+                        title={titleValue && titleValue !== '-' ? titleValue : undefined}
+                      >
+                        {displayValue}
+                      </div>
                     </td>
-                  ))}
+                    );})}
                 </tr>
               ))
             )}

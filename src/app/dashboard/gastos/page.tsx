@@ -612,12 +612,13 @@ export default function GastosPage() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   // Column definitions - must be inside component to access state and functions
-  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; render: (row: Transaction) => React.ReactNode }[] = [
+  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; titleField?: keyof Transaction; render: (row: Transaction) => React.ReactNode }[] = [
     {
       key: 'fecha',
       header: 'Fecha',
       sortable: true,
       sortableField: 'transaction_date',
+      titleField: 'transaction_date',
       render: (row) => formatDate(row.transaction_date || row.created_at),
     },
     {
@@ -626,6 +627,7 @@ export default function GastosPage() {
       sortable: true,
       sortableField: 'amount',
       align: 'right',
+      titleField: 'amount',
       render: (row) => formatAmount(row.amount),
     },
     {
@@ -634,11 +636,13 @@ export default function GastosPage() {
       sortable: true,
       sortableField: 'merchant',
       width: '150px',
+      titleField: 'merchant',
       render: (row) => row.merchant || '-',
     },
     {
       key: 'categoria',
       header: 'Categoría',
+      titleField: 'category_name',
       render: (row) => {
         const categoryColor = row.category_name ? categoryColors.get(row.category_name) : null;
         return row.category_name ? (
@@ -664,24 +668,28 @@ export default function GastosPage() {
       key: 'banco',
       header: 'Banco',
       width: '100px',
+      titleField: 'sender_bank',
       render: (row) => row.sender_bank || '-',
     },
     {
       key: 'tipo',
       header: 'Tipo',
       width: '100px',
+      titleField: 'email_type',
       render: (row) => formatEmailType(row.email_type),
     },
     {
       key: 'asunto',
       header: 'Título',
       width: '200px',
+      titleField: 'subject',
       render: (row) => row.subject || '-',
     },
     {
       key: 'descripcion',
       header: 'Descripción',
       width: '150px',
+      titleField: 'description',
       render: (row) => row.description || '-',
     },
     {

@@ -200,12 +200,13 @@ export default function LogsPage() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   // Column definitions
-  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; render: (row: ActivityLog) => ReactNode }[] = [
+  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; titleField?: keyof ActivityLog; render: (row: ActivityLog) => ReactNode }[] = [
     {
       key: 'estado',
       header: 'Estado',
       align: 'center',
       width: '60px',
+      titleField: 'status',
       render: (row) => row.status === 'success' 
         ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" />
         : <XCircle className="w-4 h-4 text-red-400 mx-auto" />,
@@ -215,11 +216,13 @@ export default function LogsPage() {
       header: 'Fecha/Hora',
       sortable: true,
       sortableField: 'created_at',
+      titleField: 'created_at',
       render: (row) => formatDate(row.created_at),
     },
     {
       key: 'operacion',
       header: 'Operación',
+      titleField: 'operation_type',
       render: (row) => (
         <span className={`px-2 py-0.5 rounded-full font-medium ${operationColors[row.operation_type] || 'bg-stone-400/20 text-stone-400'}`}>
           {operationLabels[row.operation_type] || row.operation_type}
@@ -230,18 +233,21 @@ export default function LogsPage() {
       key: 'entity_id',
       header: 'Entity ID',
       width: '150px',
+      titleField: 'entity_id',
       render: (row) => row.entity_id || '-',
     },
     {
       key: 'detalles',
       header: 'Detalles',
       width: '200px',
+      titleField: 'details',
       render: (row) => formatDetails(row.details),
     },
     {
       key: 'error',
       header: 'Error',
       width: '150px',
+      titleField: 'error_message',
       render: (row) => row.error_message || '-',
     },
   ];
