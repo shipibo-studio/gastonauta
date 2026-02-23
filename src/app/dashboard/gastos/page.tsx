@@ -82,6 +82,9 @@ export default function GastosPage() {
   // Unique categories for filter dropdown
   const [categories, setCategories] = useState<string[]>([]);
 
+  // Category colors for displaying in table
+  const [categoryColors, setCategoryColors] = useState<Map<string, string>>(new Map());
+
   // Month filter
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
@@ -112,11 +115,19 @@ export default function GastosPage() {
     async function fetchCategories() {
       const { data } = await supabase
         .from('categories')
-        .select('name')
+        .select('name, color')
         .order('name');
       
       if (data) {
         setCategoryOptions(data.map(c => c.name));
+        // Store colors
+        const colors = new Map<string, string>();
+        data.forEach(cat => {
+          if (cat.name && cat.color) {
+            colors.set(cat.name, cat.color);
+          }
+        });
+        setCategoryColors(colors);
       }
     }
     fetchCategories();
@@ -161,15 +172,22 @@ export default function GastosPage() {
       // First, fetch all categories to create a lookup map
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('categories')
-        .select('id, name');
+        .select('id, name, color');
       
       if (categoriesError) throw categoriesError;
       
       // Create a map of category id -> category name
       const categoryMap = new Map<string, string>();
+      const colorMap = new Map<string, string>();
       categoriesData?.forEach(cat => {
         categoryMap.set(cat.id, cat.name);
+        if (cat.name && cat.color) {
+          colorMap.set(cat.name, cat.color);
+        }
       });
+      
+      // Store colors for later use
+      setCategoryColors(colorMap);
       
       // Build query
       let query = supabase
@@ -621,17 +639,26 @@ export default function GastosPage() {
     {
       key: 'categoria',
       header: 'Categoría',
-      render: (row) => row.category_name ? (
-        <span className="px-2 py-0.5 rounded-full bg-violet-400/20 text-violet-400 font-medium">
-          {row.category_name}
-        </span>
-      ) : row.is_categorized === false ? (
-        <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400">
-          Sin categorizar
-        </span>
-      ) : (
-        <span className="text-stone-500">-</span>
-      ),
+      render: (row) => {
+        const categoryColor = row.category_name ? categoryColors.get(row.category_name) : null;
+        return row.category_name ? (
+          <span 
+            className="px-2 py-0.5 rounded-full font-medium"
+            style={{ 
+              backgroundColor: categoryColor ? `${categoryColor}20` : 'rgba(139, 92, 246, 0.2)',
+              color: categoryColor || '#a78bfa'
+            }}
+          >
+            {row.category_name}
+          </span>
+        ) : row.is_categorized === false ? (
+          <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400">
+            Sin categorizar
+          </span>
+        ) : (
+          <span className="text-stone-500">-</span>
+        );
+      },
     },
     {
       key: 'banco',
@@ -852,7 +879,13 @@ export default function GastosPage() {
                       </td>
                       <td className="px-2 py-2">
                         {tx.category_name ? (
-                          <span className="px-2 py-0.5 rounded-full bg-violet-400/20 text-violet-400 text-xs font-medium">
+                          <span 
+                            className="px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{ 
+                              backgroundColor: categoryColors.get(tx.category_name) ? `${categoryColors.get(tx.category_name)}20` : 'rgba(139, 92, 246, 0.2)',
+                              color: categoryColors.get(tx.category_name) || '#a78bfa'
+                            }}
+                          >
                             {tx.category_name}
                           </span>
                         ) : tx.is_categorized === false ? (
