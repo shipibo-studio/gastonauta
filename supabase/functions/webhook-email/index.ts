@@ -112,6 +112,11 @@ async function sendNotificationEmail(
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${new Date().toLocaleString('es-CL')}</td>
           </tr>
         </table>
+        <p style="margin-top: 20px;">
+          <a href="https://gastonauta.vercel.app/" style="display: inline-block; background-color: #06b6d4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+            🚀 Ver en Gastonauta
+          </a>
+        </p>
         <p style="color: #6b7280; margin-top: 20px;">
           Este es un notification automático de <strong>Gastonauta</strong>
         </p>
@@ -134,6 +139,11 @@ async function sendNotificationEmail(
             <td style="padding: 8px; border: 1px solid #e5e7eb;">${new Date().toLocaleString('es-CL')}</td>
           </tr>
         </table>
+        <p style="margin-top: 20px;">
+          <a href="https://gastonauta.vercel.app/" style="display: inline-block; background-color: #06b6d4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+            🚀 Ver en Gastonauta
+          </a>
+        </p>
         <p style="color: #6b7280; margin-top: 20px;">
           Este es un notification automático de <strong>Gastonauta</strong>
         </p>
