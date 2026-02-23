@@ -790,187 +790,28 @@ export default function GastosPage() {
           </button>
         </div>
 
-        {/* Table */}
-        <div className="flex-1 overflow-auto rounded-xl border border-stone-600/30 bg-stone-800/30 backdrop-blur-xl">
-          <div className="overflow-x-auto">
-            <table className="w-fulls">
-              <thead className="bg-stone-800/50 sticky top-0">
-                <tr className="border-b border-stone-600/30">
-                  <th 
-                    className="px-2 py-2 text-left text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
-                    onClick={() => handleSort('transaction_date')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Fecha
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
-                  <th 
-                    className="px-2 py-2 text-right text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
-                    onClick={() => handleSort('amount')}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      Monto
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
-                  <th 
-                    className="px-2 py-2 text-left text-stone-300 font-medium cursor-pointer hover:text-cyan-400"
-                    onClick={() => handleSort('merchant')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Comercio
-                      <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Categoría
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Banco
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Tipo
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Título
-                  </th>
-                  <th className="px-2 py-2 text-left text-stone-300 font-medium">
-                    Descripción
-                  </th>
-                  <th className="px-2 py-2 text-center text-stone-300 font-medium">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-2 py-8 text-center text-stone-400">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
-                    </td>
-                  </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan={9} className="px-2 py-8 text-center text-red-400">
-                      Error: {error}
-                    </td>
-                  </tr>
-                ) : transactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-2 py-8 text-center text-stone-400">
-                      No hay transacciones
-                    </td>
-                  </tr>
-                ) : (
-                  transactions.map((tx) => (
-                    <tr 
-                      key={tx.id} 
-                      className="border-b border-stone-700/30 hover:bg-stone-700/20 transition-colors"
-                    >
-                      <td className="px-2 py-2 text-stone-200 whitespace-nowrap">
-                        {formatDate(tx.transaction_date || tx.created_at)}
-                      </td>
-                      <td className="px-2 py-2 text-right text-cyan-400 font-medium whitespace-nowrap">
-                        {formatAmount(tx.amount)}
-                      </td>
-                      <td className="px-2 py-2 text-stone-200 font-medium max-w-[150px] truncate">
-                        {tx.merchant || "-"}
-                      </td>
-                      <td className="px-2 py-2">
-                        {tx.category_name ? (
-                          <span 
-                            className="px-2 py-0.5 rounded-full text-xs font-medium"
-                            style={{ 
-                              backgroundColor: categoryColors.get(tx.category_name) ? `${categoryColors.get(tx.category_name)}20` : 'rgba(139, 92, 246, 0.2)',
-                              color: categoryColors.get(tx.category_name) || '#a78bfa'
-                            }}
-                          >
-                            {tx.category_name}
-                          </span>
-                        ) : tx.is_categorized === false ? (
-                          <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400">
-                            Sin categorizar
-                          </span>
-                        ) : (
-                          <span className="text-stone-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
-                        {tx.sender_bank || "-"}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[100px] truncate">
-                        {formatEmailType(tx.email_type)}
-                      </td>
-                      <td className="px-2 py-2 text-stone-200 max-w-[200px] truncate">
-                        {tx.subject || "-"}
-                      </td>
-                      <td className="px-2 py-2 text-stone-400 max-w-[150px] truncate">
-                        {tx.description || "-"}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex gap-1 justify-center">
-                          <button
-                            onClick={() => recategorizeWithAI(tx.id)}
-                            disabled={recategorizingId === tx.id}
-                            className="p-1 rounded hover:bg-emerald-400/20 text-emerald-400 transition-colors hover:cursor-pointer disabled:opacity-50"
-                            title="Categorizar con IA"
-                          >
-                            {recategorizingId === tx.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Brain className="w-3 h-3" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => startEdit(tx)}
-                            className="p-1 rounded hover:bg-cyan-400/20 text-cyan-400 transition-colors hover:cursor-pointer"
-                            title="Editar"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => setDeletingId(tx.id)}
-                            className="p-1 rounded hover:bg-red-400/20 text-red-400 transition-colors hover:cursor-pointer"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between">
-          <div className="text-stone-400 text-sm">
-            Mostrando {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, totalCount)} de {totalCount} resultados
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-stone-300 text-sm">
-              Página {page} de {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        {/* Table using reusable DataTable component */}
+        <DataTable<Transaction>
+          data={transactions}
+          columns={columns}
+          loading={loading}
+          error={error}
+          emptyMessage="No hay transacciones"
+          page={page}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          sortField={sortField}
+          sortOrder={sortOrder}
+          onSort={(field) => {
+            // Map the field to the correct SortField type
+            if (field === 'transaction_date' || field === 'amount' || field === 'merchant' || field === 'created_at' || field === 'email_date') {
+              handleSort(field as SortField);
+            }
+          }}
+          isRefreshing={loading}
+          onRefresh={fetchTransactions}
+        />
       </main>
 
       {/* Edit Modal */}
