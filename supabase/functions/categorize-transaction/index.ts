@@ -107,9 +107,29 @@ function categorizeByKeywords(bodyPlain, merchant, categories) {
   return null;
 }
 async function callOpenRouter(bodyPlain, merchant, amount, categories, supabaseUrl, supabaseServiceKey) {
-  const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+  // Try to get API key from settings first, then fall back to env var
+  let openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+  
+  // Fetch API key from settings if not in env
   if (!openRouterApiKey) {
-    throw new Error('OPENROUTER_API_KEY not configured');
+    try {
+      const settingsResponse = await fetch(supabaseUrl + "/rest/v1/settings?key=eq.openrouter_api_key&select=value", {
+        headers: {
+          'Authorization': 'Bearer ' + supabaseServiceKey,
+          'apikey': supabaseServiceKey
+        }
+      });
+      const settingsData = await settingsResponse.json();
+      if (settingsData && settingsData.length > 0 && settingsData[0].value) {
+        openRouterApiKey = settingsData[0].value;
+      }
+    } catch (err) {
+      console.log('Error fetching API key from settings, trying env var:', err);
+    }
+  }
+  
+  if (!openRouterApiKey) {
+    throw new Error('OPENROUTER_API_KEY not configured. Add it in Settings → IA');
   }
   // Fetch LLM model from settings table
   let llmModel = 'openrouter/free';
@@ -274,7 +294,19 @@ Deno.serve(async (req)=>{
         } else {
           // No keyword match, use AI
           console.log('No keyword match found, falling back to AI');
-          categorization = await callOpenRouter(tx.body_plain || '', tx.merchant, tx.amount, categories, supabaseUrl, supabaseServiceKey);
+          try {
+            categorization = await callOpenRouter(tx.body_plain || '', tx.merchant, tx.amount, categories, supabaseUrl, supabaseServiceKey);
+          } catch (aiError) {
+            // AI failed, don't default to "Otros" - leave uncategorized
+            const aiErrMsg = aiError instanceof Error ? aiError.message : 'Unknown AI error';
+            console.error('AI categorization failed:', aiErrMsg);
+            results.push({
+              transaction_id: tx.id,
+              success: false,
+              error: 'AI failed: ' + aiErrMsg
+            });
+            continue;
+          }
         }
         // Find category ID by name (case-insensitive)
         const matchedCategory = categories.find((c)=>c.name.toLowerCase() === categorization.category.toLowerCase());

@@ -16,7 +16,9 @@ import {
   Check,
   Loader2,
   Brain,
-  ExternalLink
+  ExternalLink,
+  Eye,
+  EyeOff
 } from "lucide-react";
 
 // Type for category
@@ -49,7 +51,10 @@ export default function SettingsPage() {
   
   // LLM Model state
   const [llmModel, setLlmModel] = useState("openrouter/free");
+  const [openRouterApiKey, setOpenRouterApiKey] = useState("");
   const [savingLlmModel, setSavingLlmModel] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -69,6 +74,7 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchCategories();
     fetchLlmModel();
+    fetchOpenRouterApiKey();
   }, []);
 
   const fetchCategories = async () => {
@@ -106,6 +112,26 @@ export default function SettingsPage() {
     }
   };
 
+  const fetchOpenRouterApiKey = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", "openrouter_api_key")
+        .single();
+
+      // If no data or error (no row found), just leave empty
+      if (error || !data) {
+        return;
+      }
+      if (data?.value) {
+        setOpenRouterApiKey(data.value);
+      }
+    } catch (err) {
+      // Silently ignore errors - just means no API key set yet
+    }
+  };
+
   const saveLlmModel = async () => {
     if (!llmModel.trim()) {
       showToast("El modelo no puede estar vacío", "error");
@@ -116,8 +142,7 @@ export default function SettingsPage() {
       setSavingLlmModel(true);
       const { error } = await supabase
         .from("settings")
-        .update({ value: llmModel.trim() })
-        .eq("key", "llm_model");
+        .upsert({ key: "llm_model", value: llmModel.trim() }, { onConflict: "key" });
 
       if (error) throw error;
       showToast("Modelo de LLM actualizado exitosamente", "success");
@@ -126,6 +151,28 @@ export default function SettingsPage() {
       showToast("Error al guardar el modelo de LLM", "error");
     } finally {
       setSavingLlmModel(false);
+    }
+  };
+
+  const saveOpenRouterApiKey = async () => {
+    if (!openRouterApiKey.trim()) {
+      showToast("La API Key no puede estar vacía", "error");
+      return;
+    }
+
+    try {
+      setSavingApiKey(true);
+      const { error } = await supabase
+        .from("settings")
+        .upsert({ key: "openrouter_api_key", value: openRouterApiKey.trim() }, { onConflict: "key" });
+
+      if (error) throw error;
+      showToast("API Key de OpenRouter guardada exitosamente", "success");
+    } catch (err) {
+      console.error("Error saving OpenRouter API key:", err);
+      showToast("Error al guardar la API Key", "error");
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -463,6 +510,46 @@ export default function SettingsPage() {
                   </div>
                   <p className="text-stone-500 text-xs mt-2 font-sans">
                     Ejemplo: openrouter/free, openrouter/anthropic/claude-3-haiku, etc.
+                  </p>
+                </div>
+
+                {/* OpenRouter API Key Input */}
+                <div>
+                  <label className="block text-stone-300 text-sm font-sans mb-1.5">
+                    API Key de OpenRouter
+                  </label>
+                  <div className="flex gap-3">
+                    <div className="relative flex-1">
+                      <input
+                        type={showApiKey ? "text" : "password"}
+                        value={openRouterApiKey}
+                        onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                        className="w-full px-4 py-2.5 pr-10 bg-stone-800/50 border border-stone-600/30 rounded-lg text-stone-100 font-sans placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all"
+                        placeholder="sk-..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200 transition-colors hover:cursor-pointer"
+                      >
+                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <button
+                      onClick={saveOpenRouterApiKey}
+                      disabled={savingApiKey}
+                      className="flex items-center justify-center gap-2 px-6 py-2.5 bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-400 border border-cyan-400/30 rounded-lg font-sans text-sm transition-colors hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:opacity-50"
+                    >
+                      {savingApiKey ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      Guardar
+                    </button>
+                  </div>
+                  <p className="text-stone-500 text-xs mt-2 font-sans">
+                    Obtén tu API key en <a href="https://openrouter.ai/settings" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">openrouter.ai/settings</a>
                   </p>
                 </div>
 
