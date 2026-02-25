@@ -16,6 +16,9 @@ interface Category {
 export default function DashboardPage() {
   const router = useRouter();
   const [dailyExpenses, setDailyExpenses] = useState<{ day: number; amount: number }[]>([]);
+  const [dailyIncome, setDailyIncome] = useState<{ day: number; amount: number }[]>([]);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [totalIncome, setTotalIncome] = useState(0);
   const [chartLoading, setChartLoading] = useState(true);
   
   // Month filter
@@ -103,35 +106,69 @@ export default function DashboardPage() {
       const firstDay = new Date(year, month - 1, 1).toISOString();
       const lastDay = new Date(year, month, 0, 23, 59, 59).toISOString();
       
-      const { data, error } = await supabase
+      // Fetch expenses
+      const { data: expenseData, error: expenseError } = await supabase
         .from("transactions")
         .select("transaction_date, amount")
         .gte("transaction_date", firstDay)
         .lte("transaction_date", lastDay)
+        .eq("is_expense", true)
         .not("amount", "is", null);
       
-      if (error) throw error;
+      if (expenseError) throw expenseError;
+      
+      // Fetch income
+      const { data: incomeData, error: incomeError } = await supabase
+        .from("transactions")
+        .select("transaction_date, amount")
+        .gte("transaction_date", firstDay)
+        .lte("transaction_date", lastDay)
+        .eq("is_expense", false)
+        .not("amount", "is", null);
+      
+      if (incomeError) throw incomeError;
       
       const daysInMonth = new Date(year, month, 0).getDate();
-      const dailyMap: { [key: number]: number } = {};
+      const dailyExpensesMap: { [key: number]: number } = {};
+      const dailyIncomeMap: { [key: number]: number } = {};
+      let expenseTotal = 0;
+      let incomeTotal = 0;
       
       for (let i = 1; i <= daysInMonth; i++) {
-        dailyMap[i] = 0;
+        dailyExpensesMap[i] = 0;
+        dailyIncomeMap[i] = 0;
       }
       
-      data?.forEach(tx => {
+      expenseData?.forEach(tx => {
         if (tx.transaction_date && tx.amount) {
           const day = new Date(tx.transaction_date).getDate();
-          dailyMap[day] = (dailyMap[day] || 0) + tx.amount;
+          dailyExpensesMap[day] = (dailyExpensesMap[day] || 0) + tx.amount;
+          expenseTotal += tx.amount;
         }
       });
       
-      const result = Object.entries(dailyMap).map(([day, amount]) => ({
+      incomeData?.forEach(tx => {
+        if (tx.transaction_date && tx.amount) {
+          const day = new Date(tx.transaction_date).getDate();
+          dailyIncomeMap[day] = (dailyIncomeMap[day] || 0) + tx.amount;
+          incomeTotal += tx.amount;
+        }
+      });
+      
+      const expenseResult = Object.entries(dailyExpensesMap).map(([day, amount]) => ({
         day: parseInt(day),
         amount
       }));
       
-      setDailyExpenses(result);
+      const incomeResult = Object.entries(dailyIncomeMap).map(([day, amount]) => ({
+        day: parseInt(day),
+        amount
+      }));
+      
+      setDailyExpenses(expenseResult);
+      setDailyIncome(incomeResult);
+      setTotalExpenses(expenseTotal);
+      setTotalIncome(incomeTotal);
     } catch (err) {
       console.error("Error fetching daily expenses:", err);
     } finally {
@@ -261,27 +298,34 @@ export default function DashboardPage() {
         </div>
 
         <div className="w-full grid grid-cols-1 gap-8">
-          {/* Gráfico 1: Gastos por día del mes actual */}
-          <section className="rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border border-stone-300/20 dark:border-stone-700/40 shadow-xl p-6 flex flex-col min-h-[280px]">
+          {/* Gráfico: Ingresos vs Gastos por día */}
+          <section className="rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border border-stone-300/20 dark:border-stone-700/40 shadow-xl p-6 flex flex-col min-h-[320px]">
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 className="w-5 h-5 text-cyan-400" />
-              <span className="text-stone-200 font-sans">Gastos por día - {new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}</span>
+              <span className="text-stone-200 font-sans">Ingresos vs Gastos por día - {new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}</span>
             </div>
             
             {chartLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="w-6 h-6 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
               </div>
-            ) : dailyExpenses.length === 0 ? (
+            ) : dailyExpenses.length === 0 && dailyIncome.length === 0 ? (
               <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">
-                No hay datos de gastos este mes
+                No hay datos este mes
               </div>
             ) : (
               <>
-                <div className="h-40 flex items-end gap-0.5 flex-1">
-                  {dailyExpenses.map(({ day, amount }) => {
-                    const maxAmount = Math.max(...dailyExpenses.map(d => d.amount), 1);
-                    const height = maxAmount > 0 ? (amount / maxAmount) * 100 : 0;
+                <div className="h-44 flex items-end gap-0.5 flex-1">
+                  {dailyExpenses.map(({ day, amount: expenseAmount }) => {
+                    const incomeItem = dailyIncome.find(d => d.day === day);
+                    const incomeAmount = incomeItem?.amount || 0;
+                    const maxAmount = Math.max(
+                      ...dailyExpenses.map(d => d.amount),
+                      ...dailyIncome.map(d => d.amount),
+                      1
+                    );
+                    const expenseHeight = maxAmount > 0 ? (expenseAmount / maxAmount) * 100 : 0;
+                    const incomeHeight = maxAmount > 0 ? (incomeAmount / maxAmount) * 100 : 0;
                     const isToday = day === new Date().getDate();
                     
                     return (
@@ -289,23 +333,45 @@ export default function DashboardPage() {
                         key={day}
                         className="flex-1 flex flex-col items-center group relative"
                       >
-                        <div className="relative w-full flex items-end justify-center h-36">
-                          {amount > 0 && (
-                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-stone-900 border border-cyan-400/50 rounded px-1.5 py-0.5 text-[10px] text-cyan-400 whitespace-nowrap z-10">
-                              ${amount.toLocaleString('es-CL')}
+                        <div className="relative w-full flex items-end justify-center h-40">
+                          {/* Combined tooltip showing both income and expense */}
+                          {(incomeAmount > 0 || expenseAmount > 0) && (
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-stone-900 border border-stone-500/50 rounded px-2 py-1 text-[10px] text-stone-200 whitespace-nowrap z-10 flex gap-2">
+                              {incomeAmount > 0 && (
+                                <span className="text-emerald-400">+${incomeAmount.toLocaleString('es-CL')}</span>
+                              )}
+                              {incomeAmount > 0 && expenseAmount > 0 && <span className="text-stone-500">|</span>}
+                              {expenseAmount > 0 && (
+                                <span className="text-cyan-400">-${expenseAmount.toLocaleString('es-CL')}</span>
+                              )}
                             </div>
                           )}
+                          {/* Income bar (green, goes up) */}
                           <div
-                            className={`w-full mx-px rounded-t transition-all duration-300 cursor-pointer ${
+                            className={`w-[45%] rounded-t transition-all duration-300 cursor-pointer ${
                               isToday 
-                                ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]' 
-                                : amount > 0 
-                                  ? 'bg-cyan-400/60 hover:bg-cyan-400/80' 
-                                  : 'bg-stone-600/30'
+                                ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' 
+                                : incomeAmount > 0 
+                                  ? 'bg-emerald-400/70 hover:bg-emerald-400' 
+                                  : 'bg-emerald-400/20'
                             }`}
                             style={{ 
-                              height: `${Math.max(height, 2)}%`,
-                              minHeight: '2px'
+                              height: `${Math.max(incomeHeight, 2)}%`,
+                              minHeight: incomeAmount > 0 ? '2px' : '0'
+                            }}
+                          />
+                          {/* Expense bar (cyan, goes down from income) */}
+                          <div
+                            className={`w-[45%] rounded-t transition-all duration-300 cursor-pointer ${
+                              isToday 
+                                ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]' 
+                                : expenseAmount > 0 
+                                  ? 'bg-cyan-400/70 hover:bg-cyan-400/90' 
+                                  : 'bg-cyan-400/20'
+                            }`}
+                            style={{ 
+                              height: `${Math.max(expenseHeight, 2)}%`,
+                              minHeight: expenseAmount > 0 ? '2px' : '0'
                             }}
                           />
                         </div>
@@ -316,11 +382,28 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
-                <div className="mt-3 pt-3 border-t border-stone-600/30 flex justify-between items-center text-sm">
-                  <span className="text-stone-400">Total:</span>
-                  <span className="text-cyan-400 font-bold">
-                    ${dailyExpenses.reduce((sum, d) => sum + d.amount, 0).toLocaleString('es-CL')}
-                  </span>
+                {/* Legend */}
+                <div className="mt-3 pt-3 border-t border-stone-600/30 flex justify-center gap-8 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-emerald-400"></div>
+                    <span className="text-stone-400">Ingresos:</span>
+                    <span className="text-emerald-400 font-bold">
+                      ${totalIncome.toLocaleString('es-CL')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-cyan-400"></div>
+                    <span className="text-stone-400">Gastos:</span>
+                    <span className="text-cyan-400 font-bold">
+                      ${totalExpenses.toLocaleString('es-CL')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-stone-400">Balance:</span>
+                    <span className={`font-bold ${totalIncome - totalExpenses >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ${(totalIncome - totalExpenses).toLocaleString('es-CL')}
+                    </span>
+                  </div>
                 </div>
               </>
             )}

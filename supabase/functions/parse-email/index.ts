@@ -112,6 +112,11 @@ function parseBancoChileCargoEnCuenta(bodyPlain: string): ParsedTransaction {
 // Le informamos que usted ha efectuado una transferencia de fondos a Khipu Clbs F, el día 20 de febrero de 2026
 // Monto: $595
 // Cuenta: 269725150 (last 4 = 5150)
+// OR newer format:
+// Estimado(a) Jorge Luis Epunan Hernandez
+// Le informamos que usted ha efectuado una transferencia de fondos a Diego Epuñan Soto, el día 24 de febrero de 2026
+// Monto: $40.000
+// Mensaje: vacaciones viña 2026
 function parseBancoChileTransferencia(bodyPlain: string): ParsedTransaction {
   const result: ParsedTransaction = {
     customer_name: null,
@@ -132,21 +137,22 @@ function parseBancoChileTransferencia(bodyPlain: string): ParsedTransaction {
     result.customer_name = nameMatch[1].trim()
   }
 
-  // Parse recipient/merchant (transfer to): "transferencia de fondos a Khipu Clbs F"
-  const recipientMatch = bodyPlain.match(/transferencia de fondos a\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)(?:,|el)/im)
+  // Parse recipient/merchant (transfer to): "transferencia de fondos a Diego Epuñan Soto"
+  // Handle both old format "a Khipu Clbs F" and new format "a Diego Epuñan Soto ,"
+  const recipientMatch = bodyPlain.match(/transferencia de fondos a\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s]+?)(?:\s*,|\s+el)/im)
   if (recipientMatch) {
     result.merchant = recipientMatch[1].trim()
   }
 
-  // Parse amount: "Monto:\n$595" (with newlines in real email)
-  const amountMatch = bodyPlain.match(/Monto\s*\n\s*\$([\d.]+)|Monto\s*:\s*\$([\d.]+)/i)
+  // Parse amount: "Monto:\n$595" (with newlines in real email) OR "Monto: $40.000"
+  const amountMatch = bodyPlain.match(/Monto\s*:?\s*\$?([\d.]+)/i)
   if (amountMatch) {
-    const amountStr = (amountMatch[1] || amountMatch[2]).replace(/\./g, '').replace(',', '.')
+    const amountStr = amountMatch[1].replace(/\./g, '').replace(',', '.')
     result.amount = parseFloat(amountStr)
   }
 
-  // Parse account: "Cuenta: 269725150" - get last 4 digits
-  const accountMatch = bodyPlain.match(/Cuenta\s*:\s*\d+(\d{4})/i)
+  // Parse account: "Cuenta: 269725150" - get last 4 digits OR "Cuenta FAN 269725150"
+  const accountMatch = bodyPlain.match(/Cuenta\s*:?\s*(?:FAN\s*)?\d+(\d{4})/i)
   if (accountMatch) {
     result.account_last4 = accountMatch[1]
   }
@@ -234,6 +240,142 @@ function parseBancoEstadoEmail(bodyPlain: string): ParsedTransaction {
   return result
 }
 
+// Parser for BCI (Banco Crédito e Inversiones) emails - SENT transfers (expense)
+function parseBCIEmail(bodyPlain: string): ParsedTransaction {
+  const result: ParsedTransaction = {
+    customer_name: null,
+    amount: null,
+    account_last4: null,
+    merchant: null,
+    transaction_date: null,
+    sender_bank: 'BCI',
+    email_type: 'transferencia_fondos',
+    is_expense: true,
+  }
+
+  if (!bodyPlain) return result
+
+  // Parse customer name: "Estimado(a) Cliente" or specific name
+  // Match only first word(s) at the beginning of the email, stop at first newline
+  const nameMatch = bodyPlain.match(/^Estimado(?:a)?\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/m)
+  if (nameMatch) {
+    result.customer_name = nameMatch[1].trim()
+  }
+
+  // Parse amount: "Monto: $50.000" or "monto de $45.990"
+  const amountMatch = bodyPlain.match(/Monto:?\s+\$?([\d.]+)|monto de\s+\$?([\d.]+)/i)
+  if (amountMatch) {
+    const amountStr = (amountMatch[1] || amountMatch[2]).replace(/\./g, '').replace(',', '.')
+    result.amount = parseFloat(amountStr)
+  }
+
+  // Parse account: "N° de cuenta: ***1234" or "Cuenta: ****1234"
+  const accountMatch = bodyPlain.match(/(?:cuenta|de cuenta):?\s+\*+(\d{4})/i)
+  if (accountMatch) {
+    result.account_last4 = accountMatch[1]
+  }
+
+  // Parse recipient/merchant: "a: Juan Pérez" or "beneficiario: Nombre"
+  let recipientMatch = bodyPlain.match(/a:\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s]+?)(?:\.|\n|el)/i)
+  if (!recipientMatch) {
+    recipientMatch = bodyPlain.match(/beneficiario:?\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s]+?)(?:\.|\n)/i)
+  }
+  if (!recipientMatch) {
+    // Try to find transfer to: "Transferencia a COMERCIO"
+    recipientMatch = bodyPlain.match(/Transferencia a\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s]+?)(?:\.|\n|el)/i)
+  }
+  if (recipientMatch) {
+    result.merchant = recipientMatch[1].trim()
+  }
+
+  // Parse date: "Fecha: 20/02/2026" or "el día 20 de febrero de 2026"
+  let dateMatch = bodyPlain.match(/Fecha:?\s+(\d{2}\/\d{2}\/\d{4})/i)
+  if (!dateMatch) {
+    dateMatch = bodyPlain.match(/(\d{2})\s+de\s+(\w+)\s+de\s+(\d{4})/i)
+  }
+  if (dateMatch) {
+    if (dateMatch[1].includes('/')) {
+      const [day, month, year] = dateMatch[1].split('/')
+      result.transaction_date = `${year}-${month}-${day}T00:00:00-03:00`
+    } else {
+      const day = dateMatch[1]
+      const monthMap: Record<string, string> = {
+        'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+        'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+        'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+      }
+      const month = monthMap[dateMatch[2].toLowerCase()] || '01'
+      const year = dateMatch[3]
+      result.transaction_date = `${year}-${month}-${day}T00:00:00-03:00`
+    }
+  }
+
+  return result
+}
+
+// Parser for BCI (Banco Crédito e Inversiones) emails - RECEIVED transfer (income)
+// Email format: "Has recibido una transferencia de fondos de Veronica Paola Guzman"
+function parseBCIReceivedTransfer(bodyPlain: string): ParsedTransaction {
+  const result: ParsedTransaction = {
+    customer_name: null,
+    amount: null,
+    account_last4: null,
+    merchant: null,
+    transaction_date: null,
+    sender_bank: 'BCI',
+    email_type: 'transferencia_recibida',
+    is_expense: false, // INCOME - received transfer
+  }
+
+  if (!bodyPlain) return result
+
+  // Parse sender name (who sent the money): "de Veronica Paola Guzman"
+  // Try to extract just the name after "fondos de " or "de "
+  const senderMatch = bodyPlain.match(/fondos de ([^\n]+?)\s+hacia tu cuenta/i)
+  if (!senderMatch) {
+    const senderMatchAlt = bodyPlain.match(/Has recibido.*?de\s+([^\n]+?)\s+hacia/i)
+    if (senderMatchAlt) {
+      result.merchant = senderMatchAlt[1].trim().replace(/^fondos de /i, '')
+    }
+  } else {
+    result.merchant = senderMatch[1].trim()
+  }
+
+  // Parse amount: "Monto recibido
+// $350.000"
+  const amountMatch = bodyPlain.match(/Monto recibido\s*\$?([\d.]+)|Monto:\s*\$?([\d.]+)/i)
+  if (amountMatch) {
+    const amountStr = (amountMatch[1] || amountMatch[2]).replace(/\./g, '').replace(',', '.')
+    result.amount = parseFloat(amountStr)
+  }
+
+  // Parse date: "Fecha de la transferencia
+// 24/02/2026"
+  const dateMatch = bodyPlain.match(/Fecha de la transferencia\s*(\d{2}\/\d{2}\/\d{4})|Fecha:\s*(\d{2}\/\d{2}\/\d{4})/i)
+  if (dateMatch) {
+    const dateStr = dateMatch[1] || dateMatch[2]
+    const [day, month, year] = dateStr.split('/')
+    result.transaction_date = `${year}-${month}-${day}T00:00:00-03:00`
+  }
+
+  // Parse bank of origin: "Banco de origen
+// Banco Bci / Mach"
+  const bankMatch = bodyPlain.match(/Banco de origen\s*([\w\s\/]+?)(?:\n|Mon|Cuen|Men|Nú|Cont)/i)
+  if (bankMatch) {
+    result.sender_bank = bankMatch[1].trim()
+  }
+
+  // Parse message: "Mensaje
+// pago boleta enero"
+  const messageMatch = bodyPlain.match(/Mensaje\s*([^\n]+)/i)
+  if (messageMatch) {
+    // Store message in customer_name for now (could add a message field later)
+    result.customer_name = messageMatch[1].trim()
+  }
+
+  return result
+}
+
 // Parser for Santander Chile emails (legacy support)
 function parseSantanderEmail(bodyPlain: string): ParsedTransaction {
   const result: ParsedTransaction = {
@@ -310,6 +452,25 @@ function parseEmail(
     emailSubject.includes('transferencias de fondos')
   ) {
     return parseBancoChileTransferencia(bodyPlain)
+  }
+
+  // === BCI: Transferencias de Fondos (sent - expense) ===
+  // Filter: from_email contains "bci.cl" AND subject contains "Transferencia"
+  if (
+    emailSource.includes('bci.cl') &&
+    emailSubject.includes('transferencia')
+  ) {
+    // Check if it's a "received" transfer (income)
+    if (emailSubject.includes('recibido') || bodyPlain.toLowerCase().includes('has recibido')) {
+      return parseBCIReceivedTransfer(bodyPlain)
+    }
+    return parseBCIEmail(bodyPlain)
+  }
+
+  // === BCI: Received Transfer detection by content ===
+  if (bodyPlain.toLowerCase().includes('has recibido una transferencia') || 
+      bodyPlain.toLowerCase().includes('monto recibido')) {
+    return parseBCIReceivedTransfer(bodyPlain)
   }
 
   // === Legacy detection by from_email domain ===

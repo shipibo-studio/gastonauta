@@ -628,7 +628,19 @@ export default function GastosPage() {
       sortableField: 'amount',
       align: 'right',
       titleField: 'amount',
-      render: (row) => formatAmount(row.amount),
+      render: (row) => {
+        if (row.amount === null) return <span className="text-stone-500">-</span>;
+        const isIncome = !row.is_expense;
+        const displayAmount = isIncome ? row.amount : -row.amount;
+        return (
+          <span className={`font-medium ${isIncome ? 'text-emerald-400' : 'text-stone-100'}`}>
+            {new Intl.NumberFormat("es-CL", {
+              style: "currency",
+              currency: "CLP",
+            }).format(displayAmount)}
+          </span>
+        );
+      },
     },
     {
       key: 'merchant',
