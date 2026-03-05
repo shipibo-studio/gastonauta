@@ -91,7 +91,7 @@ async function sendNotificationEmail(
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Monto</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.amount ? `$${data.amount.toLocaleString('es-CL')}` : 'No detectado'}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Banco</strong></td>
