@@ -18,7 +18,8 @@ import {
   Brain,
   ExternalLink,
   Eye,
-  EyeOff
+  EyeOff,
+  RefreshCw
 } from "lucide-react";
 
 // Type for category
@@ -38,7 +39,12 @@ export default function SettingsPage() {
   const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"categories" | "ia">("categories");
+  const [activeTab, setActiveTab] = useState<"categories" | "ia" | "reparse">("categories");
+  
+  // Reparse state
+  const [reparseMessageId, setReparseMessageId] = useState("");
+  const [reparsing, setReparsing] = useState(false);
+  const [reparseResult, setReparseResult] = useState<any>(null);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -306,7 +312,108 @@ export default function SettingsPage() {
       showToast("Error al cambiar el estado de la categoría", "error");
     }
   };
+  const handleReparse = async (e: React.FormEvent) => {
+    e.preventDefault();
 
+    if (!reparseMessageId.trim()) {
+      showToast("Por favor ingresa un message_id válido", "error");
+      return;
+    }
+
+    try {
+      setReparsing(true);
+      setReparseResult(null);
+
+      // 1. Fetch the transaction from database
+      const { data: transaction, error: fetchError } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("message_id", reparseMessageId.trim())
+        .single();
+
+      if (fetchError || !transaction) {
+        showToast("Email no encontrado en la base de datos", "error");
+        return;
+      }
+
+      if (!transaction.body_plain && !transaction.body_raw) {
+        showToast("El email no tiene contenido para parsear", "error");
+        return;
+      }
+
+      // 2. Call parse-email function
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+      if (!anonKey || !supabaseUrl) {
+        showToast("Error de configuración: Supabase no está configurado", "error");
+        return;
+      }
+
+      const parseResponse = await fetch(`${supabaseUrl}/functions/v1/parse-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${anonKey}`,
+          "apikey": anonKey,
+        },
+        body: JSON.stringify({
+          from_email: transaction.from_email,
+          subject: transaction.subject,
+          body_plain: transaction.body_plain,
+          body_raw: transaction.body_raw,
+        }),
+      });
+
+      if (!parseResponse.ok) {
+        const error = await parseResponse.text();
+        showToast(`Error al parsear: ${error}`, "error");
+        return;
+      }
+
+      const parseResult = await parseResponse.json();
+
+      if (!parseResult.success || !parseResult.parsed) {
+        showToast("Error al procesar el email", "error");
+        return;
+      }
+
+      const parsed = parseResult.parsed;
+
+      // 3. Update the transaction in database
+      const { error: updateError } = await supabase
+        .from("transactions")
+        .update({
+          customer_name: parsed.customer_name,
+          amount: parsed.amount,
+          account_last4: parsed.account_last4,
+          merchant: parsed.merchant,
+          transaction_date: parsed.transaction_date,
+          sender_bank: parsed.sender_bank,
+          email_type: parsed.email_type,
+          is_expense: parsed.is_expense,
+        })
+        .eq("message_id", reparseMessageId.trim());
+
+      if (updateError) {
+        showToast("Error al actualizar la transacción", "error");
+        return;
+      }
+
+      setReparseResult({
+        success: true,
+        data: parsed,
+      });
+
+      showToast("Email reprocesado y actualizado exitosamente", "success");
+      setReparseMessageId("");
+    } catch (err) {
+      console.error("Error in reparse:", err);
+      showToast("Error al reprocesar el email", "error");
+    } finally {
+      setReparsing(false);
+    }
+  };
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-stone-900 via-stone-800 to-stone-900 font-sans">
       <Sidebar />
@@ -342,6 +449,17 @@ export default function SettingsPage() {
           >
             <Brain className="w-4 h-4 inline-block mr-2" />
             IA
+          </button>
+          <button
+            onClick={() => setActiveTab("reparse")}
+            className={`px-4 py-2 rounded-lg font-sans text-sm transition-all hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400 ${
+              activeTab === "reparse"
+                ? "bg-cyan-400/20 text-cyan-400 border border-cyan-400/30"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-700/30"
+            }`}
+          >
+            <RefreshCw className="w-4 h-4 inline-block mr-2" />
+            Reparse
           </button>
         </div>
 
@@ -566,6 +684,93 @@ export default function SettingsPage() {
                   </a>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reparse Section */}
+        {activeTab === "reparse" && (
+          <div className="space-y-6">
+            <div className="p-6 bg-white/5 border border-stone-600/30 rounded-xl backdrop-blur-xl">
+              <h2 className="text-xl font-serif text-stone-100 mb-2 flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-cyan-400" />
+                Reprocesar Email
+              </h2>
+              <p className="text-stone-400 text-sm font-sans mb-6">
+                Ingresa el Message ID de un email para reprocesarlo y actualizar sus datos parseados
+              </p>
+
+              <form onSubmit={handleReparse} className="space-y-4">
+                <div>
+                  <label className="block text-stone-300 text-sm font-sans mb-2">
+                    Message ID
+                  </label>
+                  <input
+                    type="text"
+                    value={reparseMessageId}
+                    onChange={(e) => setReparseMessageId(e.target.value)}
+                    placeholder="Ej: 550e8400-e29b-41d4-a716-446655440000"
+                    className="w-full px-4 py-2.5 bg-stone-800/50 border border-stone-600/30 rounded-lg text-stone-100 font-sans placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all"
+                  />
+                  <p className="text-stone-500 text-xs mt-2">
+                    Encontrarás el message_id en la sección de Logs o detalles de transacción
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={reparsing}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-400 border border-cyan-400/30 rounded-lg font-sans text-sm transition-colors hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:opacity-50"
+                >
+                  {reparsing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  Reprocesar Email
+                </button>
+              </form>
+
+              {/* Result */}
+              {reparseResult && reparseResult.success && (
+                <div className="mt-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <h3 className="text-emerald-400 font-sans font-semibold mb-3">✅ Datos parseados correctamente</h3>
+                  <div className="space-y-2 text-sm font-sans text-stone-300">
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Tipo:</span>
+                      <span className="text-emerald-300">{reparseResult.data.email_type || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Cliente:</span>
+                      <span className="text-emerald-300">{reparseResult.data.customer_name || "No detectado"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Comercio/Remitente:</span>
+                      <span className="text-emerald-300">{reparseResult.data.merchant || "No detectado"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Monto:</span>
+                      <span className="text-emerald-300">${reparseResult.data.amount?.toLocaleString('es-CL') || "No detectado"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Cuenta:</span>
+                      <span className="text-emerald-300">{reparseResult.data.account_last4 || "No detectada"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Banco:</span>
+                      <span className="text-emerald-300">{reparseResult.data.sender_bank || "No detectado"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Es gasto:</span>
+                      <span className="text-emerald-300">{reparseResult.data.is_expense ? "Sí (salida de dinero)" : "No (entrada de dinero)"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Fecha:</span>
+                      <span className="text-emerald-300">{reparseResult.data.transaction_date ? new Date(reparseResult.data.transaction_date).toLocaleString('es-CL') : "No detectada"}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

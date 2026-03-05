@@ -1,6 +1,7 @@
 // Supabase Edge Function: parse-email
 // Generic email parser that detects email type and extracts transaction data
 // Routes to specific parsers based on from_email + subject
+// VERSION: 2026-03-04 - Added priority detection for incoming transfers (transferencia_entrante)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -313,6 +314,78 @@ function parseBCIEmail(bodyPlain: string): ParsedTransaction {
   return result
 }
 
+// Parser for Banco de Chile - Transferencia Electrónica Entrante (Banca Empresa) - RECEIVED transfer (income)
+// Real email format with \n\n between labels and values:
+// Comprobante de Transferencia
+// Te informamos que MINDY NETWORKS SPA ha instruido la siguiente transferencia:
+// Datos de Destino
+// Nombre Beneficiario\n\nJorge Luis Epuñan Hernández
+// Cuenta de abono\n\n269725150
+// Datos de Origen
+// Cuenta de cargo\n\n2740321810
+// Monto Operación\n\n$2.218.497
+// Fecha y hora:\n\n27/02/2026 13:03
+function parseBancoChileTransferenciaEntrante(bodyPlain: string): ParsedTransaction {
+  const result: ParsedTransaction = {
+    customer_name: null,
+    amount: null,
+    account_last4: null,
+    merchant: null,
+    transaction_date: null,
+    sender_bank: 'Banco de Chile',
+    email_type: 'transferencia_entrante',
+    is_expense: false, // INCOME - received transfer
+  }
+
+  if (!bodyPlain) return result
+
+  console.log('=== Parsing Banco Chile Transferencia Entrante ===')
+
+  // Parse sender (who sent the money): "Te informamos que MINDY NETWORKS SPA ha instruido"
+  const senderMatch = bodyPlain.match(/Te informamos que\s+([^\n]+?)\s+ha instruido/i)
+  if (senderMatch) {
+    result.merchant = senderMatch[1].trim()
+    console.log('Sender:', result.merchant)
+  }
+
+  // Parse beneficiary name (recipient): "Nombre Beneficiario\n\nJorge Luis Epuñan Hernández"
+  // Handle \n\n or \n or just spaces between label and value
+  const nameMatch = bodyPlain.match(/Nombre\s+Beneficiario\s*\n+\s*([^\n]+?)(?:\n|$)/i)
+  if (nameMatch) {
+    result.customer_name = nameMatch[1].trim()
+    console.log('Customer name:', result.customer_name)
+  }
+
+  // Parse destination account: "Cuenta de abono\n\n269725150" - get last 4 digits
+  const accountMatch = bodyPlain.match(/Cuenta de abono\s*\n+\s*(\d+)/i)
+  if (accountMatch) {
+    const fullAccount = accountMatch[1]
+    result.account_last4 = fullAccount.slice(-4)
+    console.log('Account last 4:', result.account_last4)
+  }
+
+  // Parse amount: "Monto Operación\n\n$2.218.497"
+  // Handle both $2.218.497 and 2218497 formats
+  const amountMatch = bodyPlain.match(/Monto\s+Operación\s*\n+\s*\$?([\d.]+)/i)
+  if (amountMatch) {
+    const amountStr = amountMatch[1].replace(/\./g, '').replace(',', '.')
+    result.amount = parseFloat(amountStr)
+    console.log('Amount:', result.amount)
+  }
+
+  // Parse date and time: "Fecha y hora:\n\n27/02/2026 13:03"
+  const dateMatch = bodyPlain.match(/Fecha\s+y\s+hora:\s*\n*\s*(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/i)
+  if (dateMatch) {
+    const [day, month, year] = dateMatch[1].split('/')
+    const time = dateMatch[2]
+    result.transaction_date = `${year}-${month}-${day}T${time}:00-03:00`
+    console.log('Transaction date:', result.transaction_date)
+  }
+
+  console.log('=== Parse complete ===')
+  return result
+}
+
 // Parser for BCI (Banco Crédito e Inversiones) emails - RECEIVED transfer (income)
 // Email format: "Has recibido una transferencia de fondos de Veronica Paola Guzman"
 function parseBCIReceivedTransfer(bodyPlain: string): ParsedTransaction {
@@ -435,6 +508,21 @@ function parseEmail(
 ): ParsedTransaction {
   const emailSource = (fromEmail || '').toLowerCase()
   const emailSubject = (subject || '').toLowerCase()
+  const bodyLower = (bodyPlain || '').toLowerCase()
+
+  // === PRIORITY 1: Banco de Chile - Transferencia Electrónica ENTRANTE (Banca Empresa) ===
+  // CHECK CONTENT FIRST - if it looks like an incoming transfer, parse as entrante
+  // regardless of from_email or subject line (which might be generic)
+  // Indicators: "Comprobante de Transferencia" + "Nombre Beneficiario" + "ha instruido"
+  if (
+    bodyLower.includes('comprobante de transferencia') &&
+    bodyLower.includes('nombre beneficiario') &&
+    bodyLower.includes('ha instruido') &&
+    bodyLower.includes('datos de destino')
+  ) {
+    console.log('Detected: Banco de Chile - Transferencia Entrante (by content)')
+    return parseBancoChileTransferenciaEntrante(bodyPlain)
+  }
 
   // === Banco de Chile: Cargo en Cuenta ===
   // Filter: from_email = "enviodigital@bancochile.cl" AND subject = "Cargo en Cuenta"
@@ -442,15 +530,18 @@ function parseEmail(
     emailSource === 'enviodigital@bancochile.cl' && 
     emailSubject === 'cargo en cuenta'
   ) {
+    console.log('Detected: Banco de Chile - Cargo en Cuenta')
     return parseBancoChileCargoEnCuenta(bodyPlain)
   }
 
-  // === Banco de Chile: Transferencias de Fondos ===
+  // === Banco de Chile: Transferencias de Fondos (SENT - expense) ===
   // Filter: from_email = "serviciodetransferencias@bancochile.cl" AND subject contains "Transferencias de Fondos"
+  // This is different from "Comprobante de Transferencia" which is an incoming transfer
   if (
     emailSource === 'serviciodetransferencias@bancochile.cl' && 
     emailSubject.includes('transferencias de fondos')
   ) {
+    console.log('Detected: Banco de Chile - Transferencia Fondos (sent)')
     return parseBancoChileTransferencia(bodyPlain)
   }
 
@@ -461,20 +552,24 @@ function parseEmail(
     emailSubject.includes('transferencia')
   ) {
     // Check if it's a "received" transfer (income)
-    if (emailSubject.includes('recibido') || bodyPlain.toLowerCase().includes('has recibido')) {
+    if (emailSubject.includes('recibido') || bodyLower.includes('has recibido')) {
       return parseBCIReceivedTransfer(bodyPlain)
     }
     return parseBCIEmail(bodyPlain)
   }
 
   // === BCI: Received Transfer detection by content ===
-  if (bodyPlain.toLowerCase().includes('has recibido una transferencia') || 
-      bodyPlain.toLowerCase().includes('monto recibido')) {
+  if (bodyLower.includes('has recibido una transferencia') || 
+      bodyLower.includes('monto recibido')) {
     return parseBCIReceivedTransfer(bodyPlain)
   }
 
   // === Legacy detection by from_email domain ===
   if (emailSource.includes('bancochile') || emailSource.includes('banco.de.chile')) {
+    // Check if it's a Comprobante de Transferencia (incoming) - if so, parse as entrante
+    if (bodyLower.includes('comprobante de transferencia') && bodyLower.includes('nombre beneficiario')) {
+      return parseBancoChileTransferenciaEntrante(bodyPlain)
+    }
     // Default to Cargo en Cuenta parser for Banco Chile
     return parseBancoChileCargoEnCuenta(bodyPlain)
   }
@@ -490,6 +585,11 @@ function parseEmail(
   // === Legacy detection by subject keywords ===
   if (emailSubject.includes('cargo en cuenta') || emailSubject.includes('compra por')) {
     return parseBancoChileCargoEnCuenta(bodyPlain)
+  }
+
+  // Check for incoming transfer first before general transferencia
+  if (emailSubject.includes('comprobante de transferencia') && bodyLower.includes('nombre beneficiario')) {
+    return parseBancoChileTransferenciaEntrante(bodyPlain)
   }
 
   if (emailSubject.includes('transferencia') || emailSubject.includes('transferencias de fondos')) {
