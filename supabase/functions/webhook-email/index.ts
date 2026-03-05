@@ -106,6 +106,10 @@ async function sendNotificationEmail(
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Categoría</strong></td>
             <td style="padding: 8px; border: 1px solid #e5e7eb; color: #8b5cf6; font-weight: bold;">${data.category}</td>
           </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Categorización</strong></td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.categorizationMethod === 'regex' ? '🔍 Por Palabras Clave' : data.categorizationMethod === 'ia' ? '🤖 Por Inteligencia Artificial' : 'Manual'}</td>
+          </tr>
           ` : ''}
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Fecha Recepción</strong></td>
@@ -172,19 +176,140 @@ async function sendNotificationEmail(
   }
 }
 
+// Helper to escape regex special characters
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Categorization by keywords (regex) - tries to match keywords from categories table
+async function categorizeByKeywords(
+  bodyPlain: string,
+  merchant: string | null,
+  supabaseUrl: string,
+  supabaseServiceKey: string
+): Promise<{ category: string; confidence: number; categorizationMethod: string } | null> {
+  try {
+    // Fetch categories with keywords
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/categories?is_active=eq.true&select=id,name,description,keywords&order=id`,
+      {
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+        },
+      }
+    )
+
+    if (!response.ok) {
+      console.log('Could not fetch categories for keyword matching')
+      return null
+    }
+
+    const categories = await response.json()
+    if (!Array.isArray(categories) || categories.length === 0) {
+      return null
+    }
+
+    // Combine body and merchant for searching
+    const searchText = ((bodyPlain || '') + ' ' + (merchant || '')).toLowerCase()
+
+    // Priority order for categories
+    const priorityOrder: Record<string, number> = {
+      'Supermercado': 1,
+      'Retail': 2,
+      'E-Commerce': 3,
+      'Restaurante': 4,
+      'Combustible': 5,
+      'Transporte': 6,
+      'Entretenimiento': 7,
+      'Alimentos': 8,
+      'Servicios': 9,
+      'Otros': 99,
+    }
+
+    // Sort categories by priority
+    const sortedCategories = [...categories].sort((a, b) => {
+      const aPriority = priorityOrder[a.name] ?? 99
+      const bPriority = priorityOrder[b.name] ?? 99
+      return aPriority - bPriority
+    })
+
+    // Try to match keywords
+    for (const cat of sortedCategories) {
+      if (cat.keywords && Array.isArray(cat.keywords) && cat.keywords.length > 0) {
+        for (const keyword of cat.keywords) {
+          try {
+            const escapedKeyword = escapeRegex(keyword.toLowerCase())
+            // Try exact word boundary match
+            const regexExact = new RegExp('\\b' + escapedKeyword + '\\b', 'i')
+            if (regexExact.test(searchText)) {
+              console.log(`Keyword match found: "${keyword}" -> ${cat.name}`)
+              return {
+                category: cat.name,
+                confidence: 1.0,
+                categorizationMethod: 'regex',
+              }
+            }
+            // Try partial match
+            const regexPartial = new RegExp(escapedKeyword, 'i')
+            if (regexPartial.test(searchText)) {
+              console.log(`Partial keyword match found: "${keyword}" -> ${cat.name}`)
+              return {
+                category: cat.name,
+                confidence: 0.9,
+                categorizationMethod: 'regex',
+              }
+            }
+          } catch (err) {
+            console.log('Invalid keyword regex:', keyword, err)
+          }
+        }
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Error in keyword categorization:', error)
+    return null
+  }
+}
+
 // AI categorization function using OpenRouter
 async function categorizeTransaction(
   bodyPlain: string,
   merchant: string | null,
   amount: number | null,
   transactionId?: string
-): Promise<{ category: string; confidence: number; model: string } | null> {
+): Promise<{ category: string; confidence: number; categorizationMethod: string } | null> {
   const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-  if (!openRouterApiKey || !supabaseUrl || !supabaseServiceKey) {
-    console.log('Missing API keys for categorization, skipping')
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.log('Missing Supabase configuration for categorization')
+    return null
+  }
+
+  // Try keyword-based categorization first
+  const keywordResult = await categorizeByKeywords(bodyPlain, merchant, supabaseUrl, supabaseServiceKey)
+  if (keywordResult) {
+    console.log(`Categorized by regex: ${keywordResult.category}`)
+    // Log regex categorization
+    if (supabaseUrl && supabaseServiceKey) {
+      const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
+      await logSupabase.from('activity_logs').insert({
+        operation_type: 'categorize_transaction_success',
+        status: 'success',
+        entity_id: transactionId || null,
+        details: { merchant, amount, category: keywordResult.category, method: 'regex', confidence: keywordResult.confidence },
+      })
+    }
+    return keywordResult
+  }
+
+  // If no keyword match, try AI categorization
+  if (!openRouterApiKey) {
+    console.log('No OpenRouter API key, skipping AI categorization')
     return null
   }
 
@@ -267,6 +392,8 @@ Determine the category:`
       ? Math.min(1, usage.completion_tokens / 100)
       : 0.5
 
+    console.log(`Categorized by IA: ${category}`)
+
     // Log success
     if (supabaseUrl && supabaseServiceKey) {
       const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -274,17 +401,17 @@ Determine the category:`
         operation_type: 'categorize_transaction_success',
         status: 'success',
         entity_id: transactionId || null,
-        details: { merchant, amount, category, model: data.model || llmModel, confidence },
+        details: { merchant, amount, category, method: 'ia', model: data.model || llmModel, confidence },
       })
     }
 
     return {
       category,
       confidence,
-      model: data.model || 'openrouter/free',
+      categorizationMethod: 'ia',
     }
   } catch (error) {
-    console.error('Error in categorization:', error)
+    console.error('Error in AI categorization:', error)
     // Log error
     if (supabaseUrl && supabaseServiceKey) {
       const logSupabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -311,7 +438,7 @@ interface EmailData {
   body_html?: string
 }
 
-// Updated interface to include category
+// Updated interface to include category and categorization method
 interface NotificationData {
   messageId?: string
   merchant?: string | null
@@ -322,7 +449,7 @@ interface NotificationData {
   transactionDate?: string | null
   senderBank?: string | null
   category?: string | null
-  categorizationModel?: string | null
+  categorizationMethod?: string | null
   error?: string
 }
 
@@ -557,7 +684,7 @@ Deno.serve(async (req) => {
       transactionDate: parsedData.transaction_date,
       senderBank: parsedData.sender_bank,
       category: categorizationResult?.category || null,
-      categorizationModel: categorizationResult?.model || null,
+      categorizationMethod: categorizationResult?.categorizationMethod || null,
     })
 
     return new Response(
