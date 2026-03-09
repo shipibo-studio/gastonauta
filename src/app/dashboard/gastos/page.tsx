@@ -180,7 +180,9 @@ export default function GastosPage() {
       const categoryMap = new Map<string, string>();
       const colorMap = new Map<string, string>();
       categoriesData?.forEach(cat => {
-        categoryMap.set(cat.id, cat.name);
+        if (cat.id && cat.name) {
+          categoryMap.set(cat.id, cat.name);
+        }
         if (cat.name && cat.color) {
           colorMap.set(cat.name, cat.color);
         }
@@ -234,10 +236,13 @@ export default function GastosPage() {
       if (fetchError) throw fetchError;
       
       // Add category name to each transaction
-      const transactionsWithCategoryNames = (data || []).map(tx => ({
-        ...tx,
-        category_name: tx.category_id ? categoryMap.get(tx.category_id) || null : null
-      }));
+      const transactionsWithCategoryNames = (data || []).map(tx => {
+        const categoryName = tx.category_id ? categoryMap.get(tx.category_id) : null;
+        return {
+          ...tx,
+          category_name: categoryName || null
+        };
+      });
       
       setTransactions(transactionsWithCategoryNames);
       setTotalCount(count || 0);
@@ -656,16 +661,31 @@ export default function GastosPage() {
       header: 'Categoría',
       titleField: 'category_name',
       render: (row) => {
-        const categoryColor = row.category_name ? categoryColors.get(row.category_name) : null;
-        return row.category_name ? (
+        // category_name should already be mapped in fetchTransactions
+        const displayCategoryName = row.category_name;
+        const categoryColor = displayCategoryName ? categoryColors.get(displayCategoryName) : null;
+        
+        // Determine categorization method emoji
+        // categorization_model can be 'keyword', 'regex', 'ia', or an AI model name
+        let methodEmoji = '';
+        if (row.categorization_model) {
+          if (row.categorization_model === 'keyword' || row.categorization_model === 'regex') {
+            methodEmoji = '🔍 '; // Regex/keyword match
+          } else {
+            methodEmoji = '🧠 '; // AI categorization
+          }
+        }
+        
+        return displayCategoryName ? (
           <span 
-            className="px-2 py-0.5 rounded-full font-medium"
+            className="px-2 py-0.5 rounded-full font-medium whitespace-nowrap inline-flex items-center gap-1"
             style={{ 
               backgroundColor: categoryColor ? `${categoryColor}20` : 'rgba(139, 92, 246, 0.2)',
               color: categoryColor || '#a78bfa'
             }}
+            title={row.categorization_model ? `Categorizado por ${row.categorization_model === 'keyword' || row.categorization_model === 'regex' ? 'palabras clave' : 'IA (' + row.categorization_model + ')'}` : 'Categoría asignada'}
           >
-            {row.category_name}
+            {methodEmoji}{displayCategoryName}
           </span>
         ) : row.is_categorized === false ? (
           <span className="px-2 py-0.5 rounded-full bg-stone-600/50 text-stone-400">

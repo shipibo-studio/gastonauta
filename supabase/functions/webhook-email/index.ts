@@ -108,7 +108,7 @@ async function sendNotificationEmail(
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb;"><strong>Categorización</strong></td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.categorizationMethod === 'regex' ? '🔍 Por Palabras Clave' : data.categorizationMethod === 'ia' ? '🤖 Por Inteligencia Artificial' : 'Manual'}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">${data.categorizationMethod === 'regex' ? '🔍 Por Palabras Clave' : data.categorizationMethod === 'ia' ? '🧠 Por Inteligencia Artificial' : 'Manual'}</td>
           </tr>
           ` : ''}
           <tr>
@@ -666,7 +666,7 @@ Deno.serve(async (req) => {
             category_id: categorizationResult.category,
             is_categorized: true,
             categorized_at: new Date().toISOString(),
-            categorization_model: categorizationResult.model,
+            categorization_model: categorizationResult.categorizationMethod,
             categorization_confidence: categorizationResult.confidence,
           })
           .eq('id', transactionId)
