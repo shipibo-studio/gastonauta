@@ -6,6 +6,7 @@ import { ConfirmModal } from "../../components/ConfirmModal";
 import { useToast } from "../../components/Toast";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import pkg from "../../../../package.json";
 import { 
   Settings, 
   Plus, 
@@ -22,6 +23,7 @@ import {
   RefreshCw
 } from "lucide-react";
 
+
 // Type for category
 interface Category {
   id: string;
@@ -35,6 +37,8 @@ interface Category {
 }
 
 export default function SettingsPage() {
+  const appVersion = pkg.version;
+
   const router = useRouter();
   const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -423,6 +427,7 @@ export default function SettingsPage() {
           <h1 className="text-3xl md:text-4xl font-serif text-stone-100 drop-shadow-[0_2px_16px_rgba(34,211,238,0.7)] flex items-center gap-3">
             <Settings className="w-8 h-8 text-cyan-400" />
             Configuración
+            <span className="mt-1 text-[12px] leading-none text-stone-300/70">v{appVersion}</span>
           </h1>
         </div>
 
