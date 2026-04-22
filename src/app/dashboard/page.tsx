@@ -242,6 +242,15 @@ export default function DashboardPage() {
       maximumFractionDigits: 0
     }).format(amount);
   }
+
+  const chartMonthLabel = (() => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    if (!year || !month) {
+      return new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+    }
+    return new Date(year, month - 1, 1).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+  })();
+
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans">
       {/* Sidebar */}
@@ -302,7 +311,7 @@ export default function DashboardPage() {
           <section className="rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border border-stone-300/20 dark:border-stone-700/40 shadow-xl p-6 flex flex-col min-h-[320px]">
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 className="w-5 h-5 text-cyan-400" />
-              <span className="text-stone-200 font-sans">Ingresos vs Gastos por día - {new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}</span>
+              <span className="text-stone-200 font-sans">Ingresos vs Gastos por día - {chartMonthLabel}</span>
             </div>
             
             {chartLoading ? (

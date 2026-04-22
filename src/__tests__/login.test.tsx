@@ -7,21 +7,25 @@ import LoginPage from '@/app/page'
 
 // Create mock functions
 const mockSignInWithPassword = vi.fn()
+const mockGetSession = vi.fn()
 
 // Mock Supabase module
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
       signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
+      getSession: (...args: unknown[]) => mockGetSession(...args),
     },
   },
 }))
 
 // Mock Next.js router
 const mockPush = vi.fn()
+const mockReplace = vi.fn()
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
+    replace: mockReplace,
   }),
 }))
 
@@ -29,44 +33,65 @@ describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPush.mockClear()
+    mockReplace.mockClear()
     mockSignInWithPassword.mockReset()
+    mockGetSession.mockReset()
+    mockGetSession.mockResolvedValue({ data: { session: null } })
   })
 
-  it('renders login form with email and password fields', () => {
+  it('redirects to /dashboard when there is an active session', async () => {
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: { access_token: 'token', refresh_token: 'refresh', expires_in: 3600, expires_at: 123456789 }
+      },
+    })
+
     render(
       <BrowserRouter>
         <LoginPage />
       </BrowserRouter>
     )
 
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/dashboard')
+    })
+  })
+
+  it('renders login form with email and password fields', async () => {
+    render(
+      <BrowserRouter>
+        <LoginPage />
+      </BrowserRouter>
+    )
+
+    expect(await screen.findByLabelText(/email/i)).toBeInTheDocument()
+    expect(await screen.findByLabelText(/contraseña/i)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /entrar/i })).toBeInTheDocument()
   })
 
   it('shows validation error when fields are empty', async () => {
     const user = userEvent.setup()
-    
+
     render(
       <BrowserRouter>
         <LoginPage />
       </BrowserRouter>
     )
 
-    const submitButton = screen.getByRole('button', { name: /entrar/i })
+    const submitButton = await screen.findByRole('button', { name: /entrar/i })
     await user.click(submitButton)
-    
+
     // Form should have required validation
-    const emailInput = screen.getByLabelText(/email/i)
+    const emailInput = await screen.findByLabelText(/email/i)
     expect(emailInput).toBeInvalid()
   })
 
   it('calls signInWithPassword with correct credentials on submit', async () => {
     const user = userEvent.setup()
-    
+
     // Mock successful login
     mockSignInWithPassword.mockResolvedValue({
-      data: { 
+      data: {
         user: { id: '123', app_metadata: {}, user_metadata: {}, aud: '', created_at: '' },
         session: { access_token: 'token', refresh_token: 'refresh', expires_in: 3600, expires_at: 123456789 }
       },
@@ -79,9 +104,9 @@ describe('LoginPage', () => {
       </BrowserRouter>
     )
 
-    const emailInput = screen.getByLabelText(/email/i)
-    const passwordInput = screen.getByLabelText(/contraseña/i)
-    const submitButton = screen.getByRole('button', { name: /entrar/i })
+    const emailInput = await screen.findByLabelText(/email/i)
+    const passwordInput = await screen.findByLabelText(/contraseña/i)
+    const submitButton = await screen.findByRole('button', { name: /entrar/i })
 
     await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'password123')
@@ -97,9 +122,9 @@ describe('LoginPage', () => {
 
   it('redirects to /dashboard on successful login', async () => {
     const user = userEvent.setup()
-    
+
     mockSignInWithPassword.mockResolvedValue({
-      data: { 
+      data: {
         user: { id: '123', app_metadata: {}, user_metadata: {}, aud: '', created_at: '' },
         session: { access_token: 'token', refresh_token: 'refresh', expires_in: 3600, expires_at: 123456789 }
       },
@@ -112,9 +137,9 @@ describe('LoginPage', () => {
       </BrowserRouter>
     )
 
-    const emailInput = screen.getByLabelText(/email/i)
-    const passwordInput = screen.getByLabelText(/contraseña/i)
-    const submitButton = screen.getByRole('button', { name: /entrar/i })
+    const emailInput = await screen.findByLabelText(/email/i)
+    const passwordInput = await screen.findByLabelText(/contraseña/i)
+    const submitButton = await screen.findByRole('button', { name: /entrar/i })
 
     await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'password123')
@@ -127,7 +152,7 @@ describe('LoginPage', () => {
 
   it('displays error message on failed login', async () => {
     const user = userEvent.setup()
-    
+
     mockSignInWithPassword.mockResolvedValue({
       data: { user: null, session: null },
       error: new AuthError('Invalid login credentials'),
@@ -139,9 +164,9 @@ describe('LoginPage', () => {
       </BrowserRouter>
     )
 
-    const emailInput = screen.getByLabelText(/email/i)
-    const passwordInput = screen.getByLabelText(/contraseña/i)
-    const submitButton = screen.getByRole('button', { name: /entrar/i })
+    const emailInput = await screen.findByLabelText(/email/i)
+    const passwordInput = await screen.findByLabelText(/contraseña/i)
+    const submitButton = await screen.findByRole('button', { name: /entrar/i })
 
     await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'wrongpassword')
@@ -154,11 +179,11 @@ describe('LoginPage', () => {
 
   it('shows loading state while logging in', async () => {
     const user = userEvent.setup()
-    
+
     // Mock a slow login that we can track
-    mockSignInWithPassword.mockImplementation(() => 
+    mockSignInWithPassword.mockImplementation(() =>
       new Promise((resolve) => setTimeout(() => resolve({
-        data: { 
+        data: {
           user: { id: '123', app_metadata: {}, user_metadata: {}, aud: '', created_at: '' },
           session: { access_token: 'token', refresh_token: 'refresh', expires_in: 3600, expires_at: 123456789 }
         },
@@ -172,9 +197,9 @@ describe('LoginPage', () => {
       </BrowserRouter>
     )
 
-    const emailInput = screen.getByLabelText(/email/i)
-    const passwordInput = screen.getByLabelText(/contraseña/i)
-    const submitButton = screen.getByRole('button', { name: /entrar/i })
+    const emailInput = await screen.findByLabelText(/email/i)
+    const passwordInput = await screen.findByLabelText(/contraseña/i)
+    const submitButton = await screen.findByRole('button', { name: /entrar/i })
 
     await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'password123')

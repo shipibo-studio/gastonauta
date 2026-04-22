@@ -8,8 +8,8 @@ import { DataTable } from "../../components/DataTable";
 import { useToast } from "../../components/Toast";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { 
-  Search, 
+import {
+  Search,
   RefreshCw,
   Filter,
   Pencil,
@@ -67,18 +67,18 @@ export default function GastosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
-  
+
   // Pagination
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 25;
-  
+
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [sortField, setSortField] = useState<SortField>("transaction_date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
-  
+
   // Unique categories for filter dropdown
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -102,7 +102,7 @@ export default function GastosPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Transaction>>({});
   const [saving, setSaving] = useState(false);
-  
+
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -117,7 +117,7 @@ export default function GastosPage() {
         .from('categories')
         .select('name, color')
         .order('name');
-      
+
       if (data) {
         setCategoryOptions(data.map(c => c.name));
         // Store colors
@@ -167,15 +167,15 @@ export default function GastosPage() {
   async function fetchTransactions() {
     setLoading(true);
     setError(null);
-    
+
     try {
       // First, fetch all categories to create a lookup map
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('categories')
         .select('id, name, color');
-      
+
       if (categoriesError) throw categoriesError;
-      
+
       // Create a map of category id -> category name
       const categoryMap = new Map<string, string>();
       const colorMap = new Map<string, string>();
@@ -187,20 +187,20 @@ export default function GastosPage() {
           colorMap.set(cat.name, cat.color);
         }
       });
-      
+
       // Store colors for later use
       setCategoryColors(colorMap);
-      
+
       // Build query
       let query = supabase
         .from("transactions")
         .select("*", { count: "exact" });
-      
+
       // Apply search filter
       if (searchTerm) {
         query = query.or(`merchant.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%,subject.ilike.%${searchTerm}%,body_plain.ilike.%${searchTerm}%`);
       }
-      
+
       // Apply category filter
       if (categoryFilter) {
         // First get the category ID from the name
@@ -209,7 +209,7 @@ export default function GastosPage() {
           .select('id')
           .eq('name', categoryFilter)
           .single();
-        
+
         if (categoryData) {
           query = query.eq('category_id', categoryData.id);
         }
@@ -222,38 +222,49 @@ export default function GastosPage() {
         const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
         query = query.gte('transaction_date', startDate).lte('transaction_date', endDate);
       }
-      
+
       // Apply sorting
       query = query.order(sortField, { ascending: sortOrder === "asc" });
-      
+
       // Apply pagination
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
       query = query.range(from, to);
-      
+
       const { data, count, error: fetchError } = await query;
-      
+
       if (fetchError) throw fetchError;
-      
-      // Add category name to each transaction
+
+      // Add category name to each transaction.
+      // Some legacy rows may store the category name directly in category_id.
       const transactionsWithCategoryNames = (data || []).map(tx => {
-        const categoryName = tx.category_id ? categoryMap.get(tx.category_id) : null;
+        let categoryName: string | null = null;
+
+        if (tx.category_id) {
+          const mappedCategoryName = categoryMap.get(tx.category_id);
+          if (mappedCategoryName) {
+            categoryName = mappedCategoryName;
+          } else if (!tx.category_id.includes('-')) {
+            categoryName = tx.category_id;
+          }
+        }
+
         return {
           ...tx,
           category_name: categoryName || null
         };
       });
-      
+
       setTransactions(transactionsWithCategoryNames);
       setTotalCount(count || 0);
-      
+
       // Fetch unique categories for filter dropdown
       if (categories.length === 0) {
         const { data: categoryData } = await supabase
           .from('categories')
           .select('name')
           .order('name');
-        
+
         if (categoryData) {
           const uniqueCategories = categoryData.map(c => c.name);
           setCategories(uniqueCategories);
@@ -304,12 +315,12 @@ export default function GastosPage() {
 
       // Sort months descending
       const sortedMonths = Array.from(monthsSet).sort((a, b) => b.localeCompare(a));
-      
+
       // Ensure at least Feb 2026 is available
       if (!sortedMonths.includes('2026-02')) {
         sortedMonths.unshift('2026-02');
       }
-      
+
       setAvailableMonths(sortedMonths);
 
       // Set default to current month or latest available
@@ -352,7 +363,7 @@ export default function GastosPage() {
 
       // Calculate totals per category
       const categoryTotals = new Map<string, number>();
-      
+
       // Initialize all categories with 0
       allCategories?.forEach(cat => {
         categoryTotals.set(cat.id, 0);
@@ -386,7 +397,7 @@ export default function GastosPage() {
 
   function formatEmailType(emailType: string | null): string {
     if (!emailType) return '-';
-    
+
     // Normalizar tipos de email a texto más legible
     const typeMap: Record<string, string> = {
       'cargo_en_cuenta': 'Cargo en Cuenta',
@@ -396,7 +407,7 @@ export default function GastosPage() {
       'pago_servicio': 'Pago de Servicio',
       'abono': 'Abono',
     };
-    
+
     return typeMap[emailType] || emailType;
   }
 
@@ -438,7 +449,7 @@ export default function GastosPage() {
 
   async function saveEdit() {
     if (!editingId) return;
-    
+
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -447,27 +458,27 @@ export default function GastosPage() {
         router.push('/login');
         return;
       }
-      
+
       // Get category ID from name
       let categoryIdToSave = editForm.category_id;
-      const isUUID = editForm.category_id && 
-        editForm.category_id.includes('-') && 
+      const isUUID = editForm.category_id &&
+        editForm.category_id.includes('-') &&
         editForm.category_id.split('-').length === 5;
-      
+
       if (editForm.category_id && !isUUID) {
         const { data: categoriesData } = await supabase
           .from('categories')
           .select('id, name');
-        
+
         const foundCategory = categoriesData?.find(
           cat => cat.name.toLowerCase() === editForm.category_id?.toLowerCase()
         );
-        
+
         if (foundCategory) {
           categoryIdToSave = foundCategory.id;
         }
       }
-      
+
       const { error: updateError } = await supabase
         .from("transactions")
         .update({
@@ -475,12 +486,12 @@ export default function GastosPage() {
           description: editForm.description,
         })
         .eq("id", editingId);
-      
+
       if (updateError) {
         console.error('Supabase update error:', updateError);
         throw updateError;
       }
-      
+
       // Log the update operation
       await supabase.from('activity_logs').insert({
         operation_type: 'expense_update',
@@ -492,7 +503,7 @@ export default function GastosPage() {
           description: editForm.description,
         },
       });
-      
+
       await fetchTransactions();
       setEditingId(null);
       setEditForm({});
@@ -507,7 +518,7 @@ export default function GastosPage() {
 
   async function confirmDelete() {
     if (!deletingId) return;
-    
+
     setDeleting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -516,22 +527,22 @@ export default function GastosPage() {
         router.push('/login');
         return;
       }
-      
+
       console.log('User authenticated:', session.user.id);
       console.log('Deleting transaction:', deletingId);
-      
+
       const { error: deleteError } = await supabase
         .from("transactions")
         .delete()
         .eq("id", deletingId);
-      
+
       console.log('Delete result:', { error: deleteError });
-      
+
       if (deleteError) {
         console.error('Supabase delete error:', deleteError);
         throw deleteError;
       }
-      
+
       // Log the delete operation
       await supabase.from('activity_logs').insert({
         operation_type: 'expense_delete',
@@ -540,7 +551,7 @@ export default function GastosPage() {
         user_id: session.user.id,
         details: {},
       });
-      
+
       await fetchTransactions();
       setDeletingId(null);
       showToast('Transacción eliminada correctamente', 'success');
@@ -595,7 +606,7 @@ export default function GastosPage() {
         const successfulResults = result.results?.filter((r: { success: boolean }) => r.success) || [];
         const keywordResults = successfulResults.filter((r: { model: string }) => r.model === 'keyword');
         const aiResults = successfulResults.filter((r: { model: string }) => r.model !== 'keyword');
-        
+
         if (keywordResults.length > 0 && aiResults.length === 0) {
           showToast(`Categorizado por palabras clave: ${keywordResults[0].category}`, 'success');
         } else if (aiResults.length > 0) {
@@ -664,7 +675,7 @@ export default function GastosPage() {
         // category_name should already be mapped in fetchTransactions
         const displayCategoryName = row.category_name;
         const categoryColor = displayCategoryName ? categoryColors.get(displayCategoryName) : null;
-        
+
         // Determine categorization method emoji
         // categorization_model can be 'keyword', 'regex', 'ia', or an AI model name
         let methodEmoji = '';
@@ -675,11 +686,11 @@ export default function GastosPage() {
             methodEmoji = '🧠 '; // AI categorization
           }
         }
-        
+
         return displayCategoryName ? (
-          <span 
+          <span
             className="px-2 py-0.5 rounded-full font-medium whitespace-nowrap inline-flex items-center gap-1"
-            style={{ 
+            style={{
               backgroundColor: categoryColor ? `${categoryColor}20` : 'rgba(139, 92, 246, 0.2)',
               color: categoryColor || '#a78bfa'
             }}
@@ -781,7 +792,7 @@ export default function GastosPage() {
               className="w-full pl-10 pr-4 py-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
             />
           </div>
-          
+
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
             <select
@@ -795,7 +806,7 @@ export default function GastosPage() {
               ))}
             </select>
           </div>
-          
+
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
             <select
@@ -812,7 +823,7 @@ export default function GastosPage() {
               })}
             </select>
           </div>
-          
+
           <button
             onClick={resetFilters}
             className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
@@ -820,7 +831,7 @@ export default function GastosPage() {
           >
             <XCircle className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
-          
+
           <button
             onClick={fetchTransactions}
             className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
@@ -859,7 +870,7 @@ export default function GastosPage() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-stone-800 border border-stone-600 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <h2 className="text-2xl font-serif text-stone-100 mb-4">Editar Transacción</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-stone-400 text-sm mb-1">Comercio</label>
@@ -870,7 +881,7 @@ export default function GastosPage() {
                   className="w-full px-3 py-2 bg-stone-700/30 border border-stone-600 rounded-lg text-stone-400 cursor-not-allowed"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-stone-400 text-sm mb-1">Monto</label>
                 <div className="w-full px-3 py-2 bg-stone-700/30 border border-stone-600 rounded-lg text-stone-400 cursor-not-allowed">
@@ -887,12 +898,12 @@ export default function GastosPage() {
                   className="w-full px-3 py-2 bg-stone-700/30 border border-stone-600 rounded-lg text-stone-400 cursor-not-allowed"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-stone-400 text-sm mb-1">Categoría</label>
                 <select
                   value={editForm.category_id || ''}
-                  onChange={(e) => setEditForm({...editForm, category_id: e.target.value || null})}
+                  onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value || null })}
                   className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
                 >
                   <option value="">Seleccionar...</option>
@@ -901,19 +912,19 @@ export default function GastosPage() {
                   ))}
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-stone-400 text-sm mb-1">Descripción</label>
                 <input
                   type="text"
                   value={editForm.description || ''}
-                  onChange={(e) => setEditForm({...editForm, description: e.target.value || null})}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value || null })}
                   placeholder="Agregar descripción..."
                   className="w-full px-3 py-2 bg-stone-700/50 border border-stone-600 rounded-lg text-stone-100 placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
                 />
               </div>
             </div>
-            
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={cancelEdit}

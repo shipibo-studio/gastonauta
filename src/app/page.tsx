@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -8,8 +8,31 @@ export default function LoginPage() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState("");
   const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function redirectIfSessionExists() {
+      const { data } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (data.session) {
+        router.replace("/dashboard");
+        return;
+      }
+
+      setCheckingSession(false);
+    }
+
+    redirectIfSessionExists();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,6 +56,14 @@ export default function LoginPage() {
         router.push("/dashboard");
       }, 600);
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans">
+        <p className="text-stone-200">Verificando sesión...</p>
+      </div>
+    );
   }
 
   return (
