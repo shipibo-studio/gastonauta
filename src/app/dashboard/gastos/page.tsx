@@ -72,6 +72,7 @@ export default function GastosPage() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 25;
+  const [showAll, setShowAll] = useState(false);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
@@ -162,7 +163,7 @@ export default function GastosPage() {
       setPage(1);
     }
     fetchTransactions();
-  }, [searchTerm, categoryFilter, selectedMonth]);
+  }, [searchTerm, categoryFilter, selectedMonth, showAll]);
 
   async function fetchTransactions() {
     setLoading(true);
@@ -226,10 +227,12 @@ export default function GastosPage() {
       // Apply sorting
       query = query.order(sortField, { ascending: sortOrder === "asc" });
 
-      // Apply pagination
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-      query = query.range(from, to);
+      // Apply pagination (unless in "show all" mode)
+      if (!showAll) {
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+      }
 
       const { data, count, error: fetchError } = await query;
 
@@ -824,45 +827,54 @@ export default function GastosPage() {
             </select>
           </div>
 
-          <button
-            onClick={resetFilters}
-            className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
-            title="Limpiar filtros"
-          >
-            <XCircle className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+           <button
+             onClick={resetFilters}
+             className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
+             title="Limpiar filtros"
+           >
+             <XCircle className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+           </button>
 
-          <button
-            onClick={fetchTransactions}
-            className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
-            title="Actualizar"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+           <button
+             onClick={fetchTransactions}
+             className="p-2 bg-stone-800/50 border border-stone-600/50 rounded-lg text-stone-100 hover:bg-stone-700/50 hover:border-cyan-400/50 transition-all hover:cursor-pointer"
+             title="Actualizar"
+           >
+             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+           </button>
+
+           <button
+             onClick={() => setShowAll(!showAll)}
+             className={`p-2 rounded-lg transition-all hover:cursor-pointer ${showAll ? "bg-cyan-400/20 border border-cyan-400/50 text-cyan-400" : "bg-stone-800/50 border border-stone-600/50 text-stone-400 hover:bg-stone-700/50 hover:border-cyan-400/50"}`}
+             title={showAll ? "Mostrar con paginación" : "Ver todos los gastos"}
+           >
+             <span className="text-xs font-medium">{showAll ? "Paginado" : "Ver todo"}</span>
+           </button>
         </div>
 
-        {/* Table using reusable DataTable component */}
-        <DataTable<Transaction>
-          data={transactions}
-          columns={columns}
-          loading={loading}
-          error={error}
-          emptyMessage="No hay transacciones"
-          page={page}
-          totalCount={totalCount}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          sortField={sortField}
-          sortOrder={sortOrder}
-          onSort={(field) => {
-            // Map the field to the correct SortField type
-            if (field === 'transaction_date' || field === 'amount' || field === 'merchant' || field === 'created_at' || field === 'email_date') {
-              handleSort(field as SortField);
-            }
-          }}
-          isRefreshing={loading}
-          onRefresh={fetchTransactions}
-        />
+         {/* Table using reusable DataTable component */}
+         <DataTable<Transaction>
+           data={transactions}
+           columns={columns}
+           loading={loading}
+           error={error}
+           emptyMessage="No hay transacciones"
+           page={showAll ? 1 : page}
+           totalCount={totalCount}
+           pageSize={pageSize}
+           onPageChange={setPage}
+           showAll={showAll}
+           sortField={sortField}
+           sortOrder={sortOrder}
+           onSort={(field) => {
+             // Map the field to the correct SortField type
+             if (field === 'transaction_date' || field === 'amount' || field === 'merchant' || field === 'created_at' || field === 'email_date') {
+               handleSort(field as SortField);
+             }
+           }}
+           isRefreshing={loading}
+           onRefresh={fetchTransactions}
+         />
       </main>
 
       {/* Edit Modal */}

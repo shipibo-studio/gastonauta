@@ -33,6 +33,7 @@ export interface DataTableProps<T> {
   totalCount: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  showAll?: boolean;  // Nueva prop para modo "ver todo"
   
   // Sorting
   sortField?: string;
@@ -54,6 +55,7 @@ export function DataTable<T extends { id: string | number }>({
   totalCount,
   pageSize,
   onPageChange,
+  showAll = false,
   sortField,
   sortOrder,
   onSort,
@@ -61,8 +63,8 @@ export function DataTable<T extends { id: string | number }>({
   onRefresh,
 }: DataTableProps<T>) {
   const totalPages = Math.ceil(totalCount / pageSize);
-  const startItem = (page - 1) * pageSize + 1;
-  const endItem = Math.min(page * pageSize, totalCount);
+  const startItem = showAll ? 1 : (page - 1) * pageSize + 1;
+  const endItem = showAll ? totalCount : Math.min(page * pageSize, totalCount);
 
   const getSortIcon = (column: Column<T>) => {
     if (!column.sortable || !onSort) return null;
@@ -168,41 +170,47 @@ export function DataTable<T extends { id: string | number }>({
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between p-4 border-t border-stone-600/30">
-        <div className="text-stone-400 text-sm">
-          Mostrando {startItem} - {endItem} de {totalCount} resultados
-        </div>
-        <div className="flex items-center gap-2">
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 transition-all hover:cursor-pointer mr-2"
-              title="Actualizar"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            </button>
-          )}
-          <button
-            onClick={() => onPageChange(Math.max(1, page - 1))}
-            disabled={page === 1}
-            className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-stone-300 text-sm">
-            Página {page} de {totalPages}
-          </span>
-          <button
-            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-            disabled={page >= totalPages}
-            className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+       {/* Pagination */}
+       <div className="flex items-center justify-between p-4 border-t border-stone-600/30">
+         <div className="text-stone-400 text-sm">
+           {showAll ? (
+             `Mostrando ${totalCount} resultados`
+           ) : (
+             `Mostrando ${startItem} - ${endItem} de ${totalCount} resultados`
+           )}
+         </div>
+         {!showAll && (
+           <div className="flex items-center gap-2">
+             {onRefresh && (
+               <button
+                 onClick={onRefresh}
+                 disabled={isRefreshing}
+                 className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 transition-all hover:cursor-pointer mr-2"
+                 title="Actualizar"
+               >
+                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+               </button>
+             )}
+             <button
+               onClick={() => onPageChange(Math.max(1, page - 1))}
+               disabled={page === 1}
+               className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
+             >
+               <ChevronLeft className="w-4 h-4" />
+             </button>
+             <span className="text-stone-300 text-sm">
+               Página {page} de {totalPages}
+             </span>
+             <button
+               onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+               disabled={page >= totalPages}
+               className="p-2 rounded-lg border border-stone-600/50 bg-stone-800/50 text-stone-200 hover:bg-stone-700/50 hover:border-cyan-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:cursor-pointer"
+             >
+               <ChevronRight className="w-4 h-4" />
+             </button>
+           </div>
+         )}
+       </div>
     </div>
   );
 }
