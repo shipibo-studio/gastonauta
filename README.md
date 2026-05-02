@@ -12,7 +12,10 @@ Proyecto de gestión de gastos personales 💸
 - shadcn/ui (componentes UI)
 - lucide-react (iconos)
 - Google Fonts: Instrument Serif (títulos), Source Sans 3 (texto)
-- **Supabase** (Base de datos PostgreSQL, Auth, Storage, Edge Functions)
+- Vercel (Deploy)
+- Supabase (Base de datos PostgreSQL, Auth, Storage, Edge Functions)
+- Resend (Envio de emails de notificación)
+- Make (Parsing de emails desde Google Mail)
 
 ## Despliegue
 
@@ -20,14 +23,6 @@ Desplegado en **Vercel**:
 
 - **Producción**: [https://gastonauta.vercel.app/](https://gastonauta.vercel.app/)
 - **Branch preview**: Cada push a una rama crea un preview deployment automático
-
-### Vercel (recomendado para Next.js)
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/shipibo-studio/gastonauta)
-
-### Netlify
-
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/shipibo-studio/gastonauta)
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
