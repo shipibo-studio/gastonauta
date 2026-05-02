@@ -12,6 +12,41 @@ Proyecto de gestión de gastos personales 💸
 - shadcn/ui (componentes UI)
 - lucide-react (iconos)
 - Google Fonts: Instrument Serif (títulos), Source Sans 3 (texto)
+- **Supabase** (Base de datos PostgreSQL, Auth, Storage, Edge Functions)
+
+## Despliegue
+
+Este proyecto está configurado para desplegarse en **Vercel** u **Netlify** (Next.js 16 App Router).
+
+### Vercel (recomendado para Next.js)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/shipibo-studio/gastonauta)
+
+### Netlify
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/shipibo-studio/gastonauta)
+
+### Variables de entorno necesarias
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Supabase
+
+El proyecto utiliza **Supabase** como backend:
+- **Base de datos**: PostgreSQL
+- **Autenticación**: Email/password auth
+- **Storage**: Para archivos adjuntos
+- **Edge Functions**: Para procesamiento serverless (categorización con IA)
+
+### Configuración de Supabase
+
+1. Crear proyecto en [Supabase](https://supabase.com/)
+2. Obtener `URL` y `anon key` del dashboard
+3. Configurar las variables de entorno
+4. Ejecutar migraciones SQL desde `supabase/migrations/`
 
 ## Estructura de rutas
 
