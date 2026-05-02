@@ -17,7 +17,7 @@ Proyecto de gestión de gastos personales 💸
 
 - `/` — Login (email/password, validación, diseño glass/neon)
 - `/dashboard` — Dashboard principal (sidebar colapsable, charts placeholder)
-- `/dashboard/gastos` — Mis gastos (pendiente de contenido)
+- `/dashboard/gastos` — Mis gastos (selección múltiple, cálculos, paginación, ver-todo)
 - `/dashboard/log` — Log (pendiente de contenido)
 - `/dashboard/settings` — Configuración (pendiente de contenido)
 - `/logout` — Cerrar sesión

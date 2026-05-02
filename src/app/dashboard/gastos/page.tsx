@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ReactNode } from "react";
 import { Sidebar } from "../../components/Sidebar";
 import { ConfirmModal } from "../../components/ConfirmModal";
@@ -22,7 +22,9 @@ import {
   Calendar,
   ArrowUpDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Calculator,
+  X as XIcon
 } from "lucide-react";
 
 interface Category {
@@ -112,6 +114,10 @@ export default function GastosPage() {
   const [recategorizingId, setRecategorizingId] = useState<string | null>(null);
   const { showToast } = useToast();
 
+  // State para selecciones y cálculos
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
+  const [showCalculations, setShowCalculations] = useState(false);
+
   useEffect(() => {
     async function fetchCategories() {
       const { data } = await supabase
@@ -148,26 +154,28 @@ export default function GastosPage() {
     fetchTransactions();
   }, []);
 
-  // Update summary when month changes
-  useEffect(() => {
-    fetchCategorySummary();
-  }, [selectedMonth]);
+   // Update summary when month changes
+   useEffect(() => {
+     fetchCategorySummary();
+   }, [selectedMonth]);
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [page, sortField, sortOrder]);
+   // Clear selections when transactions are refreshed
+   useEffect(() => {
+     setSelectedTransactions(new Set());
+     setShowCalculations(false);
+   }, [transactions]);
 
-  useEffect(() => {
-    // Reset page when filters change
-    if (page !== 1) {
-      setPage(1);
-    }
-    fetchTransactions();
-  }, [searchTerm, categoryFilter, selectedMonth, showAll]);
+   useEffect(() => {
+     // Reset page when filters change
+     if (page !== 1) {
+       setPage(1);
+     }
+     fetchTransactions();
+   }, [searchTerm, categoryFilter, selectedMonth, showAll]);
 
-  async function fetchTransactions() {
-    setLoading(true);
-    setError(null);
+   async function fetchTransactions() {
+     setLoading(true);
+     setError(null);
 
     try {
       // First, fetch all categories to create a lookup map
@@ -277,7 +285,26 @@ export default function GastosPage() {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
+     }
+  }
+
+  // Toggle selección de transacción
+  function toggleTransactionSelection(txId: string, isExpense: boolean) {
+    if (!isExpense) return; // Solo permitir selección de gastos
+    const newSelected = new Set(selectedTransactions);
+    if (newSelected.has(txId)) {
+      newSelected.delete(txId);
+    } else {
+      newSelected.add(txId);
     }
+    setSelectedTransactions(newSelected);
+    setShowCalculations(newSelected.size > 0);
+  }
+
+  // Limpiar todas las selecciones
+  function clearSelections() {
+    setSelectedTransactions(new Set());
+    setShowCalculations(false);
   }
 
   function handleSort(field: SortField) {
@@ -288,6 +315,17 @@ export default function GastosPage() {
       setSortOrder("desc");
     }
   }
+
+  // Calcular suma de gastos seleccionados
+  const calculateSelectedTotal = useCallback(() => {
+    return Array.from(selectedTransactions).reduce((sum, txId) => {
+      const tx = transactions.find(t => t.id === txId);
+      if (tx && tx.is_expense && tx.amount) {
+        return sum + tx.amount;
+      }
+      return sum;
+    }, 0);
+  }, [selectedTransactions, transactions]);
 
   function resetFilters() {
     setSearchTerm("");
@@ -630,16 +668,31 @@ export default function GastosPage() {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  // Column definitions - must be inside component to access state and functions
-  const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; titleField?: keyof Transaction; render: (row: Transaction) => React.ReactNode }[] = [
-    {
-      key: 'fecha',
-      header: 'Fecha',
-      sortable: true,
-      sortableField: 'transaction_date',
-      titleField: 'transaction_date',
-      render: (row) => formatDate(row.transaction_date || row.created_at),
-    },
+   // Column definitions - must be inside component to access state and functions
+   const columns: { key: string; header: string; sortable?: boolean; sortableField?: string; align?: "left" | "center" | "right"; width?: string; titleField?: keyof Transaction; render: (row: Transaction) => React.ReactNode }[] = [
+     {
+       key: 'select',
+       header: '',
+       align: 'center',
+       width: '40px',
+       render: (row) => (
+         <input
+           type="checkbox"
+           checked={selectedTransactions.has(row.id)}
+           onChange={() => toggleTransactionSelection(row.id, row.is_expense)}
+           disabled={!row.is_expense}
+           className={`w-4 h-4 rounded border-stone-500 focus:ring-cyan-400 ${row.is_expense ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'}`}
+         />
+       ),
+     },
+     {
+       key: 'fecha',
+       header: 'Fecha',
+       sortable: true,
+       sortableField: 'transaction_date',
+       titleField: 'transaction_date',
+       render: (row) => formatDate(row.transaction_date || row.created_at),
+     },
     {
       key: 'amount',
       header: 'Monto',
@@ -778,12 +831,39 @@ export default function GastosPage() {
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-stone-900 via-stone-800 to-stone-700 font-sans">
       <Sidebar />
-      <main className="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
-        <h1 className="text-3xl font-serif text-stone-100 drop-shadow-[0_2px_16px_rgba(34,211,238,0.7)]">
-          Mis gastos
-        </h1>
+       <main className="flex-1 flex flex-col p-6 gap-6 overflow-hidden pb-32">
+         <h1 className="text-3xl font-serif text-stone-100 drop-shadow-[0_2px_16px_rgba(34,211,238,0.7)]">
+           Mis gastos
+         </h1>
 
-        {/* Filters */}
+         {/* Calculations Sidebar */}
+         {showCalculations && (
+           <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-stone-900/95 border-t border-cyan-400/30 backdrop-blur-xl shadow-[0_-10px_30px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom duration-300">
+             <div className="max-w-6xl mx-auto flex items-center gap-6">
+               <div className="flex items-center gap-2">
+                 <Calculator className="w-5 h-5 text-cyan-400" />
+                 <span className="text-stone-400 text-md font-medium">Sumadora</span>
+               </div>
+               <div className="flex items-center gap-3">
+                 <span className="text-3xl font-serif text-cyan-400">
+                   {new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(calculateSelectedTotal())}
+                 </span>
+                 <span className="text-stone-500 text-sm">
+                   ({selectedTransactions.size} {selectedTransactions.size === 1 ? 'seleccionado' : 'seleccionados'})
+                 </span>
+               </div>
+               <button
+                 onClick={clearSelections}
+                 className="p-1.5 rounded-lg hover:bg-cyan-400/20 text-cyan-400 border-1 border-cyan-400 cursor-pointer hover:text-cyan-400 transition-colors ml-auto"
+                 title="Limpiar selección"
+               >
+                 <XIcon className="w-4 h-4" />
+               </button>
+             </div>
+           </div>
+         )}
+
+         {/* Filters */}
         <div className="flex flex-wrap gap-4 items-center">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
