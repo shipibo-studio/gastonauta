@@ -16,7 +16,10 @@ Proyecto de gestión de gastos personales 💸
 
 ## Despliegue
 
-Este proyecto está configurado para desplegarse en **Vercel** u **Netlify** (Next.js 16 App Router).
+Desplegado en **Vercel**:
+
+- **Producción**: [https://gastonauta.vercel.app/](https://gastonauta.vercel.app/)
+- **Branch preview**: Cada push a una rama crea un preview deployment automático
 
 ### Vercel (recomendado para Next.js)
 
@@ -25,8 +28,6 @@ Este proyecto está configurado para desplegarse en **Vercel** u **Netlify** (Ne
 ### Netlify
 
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/shipibo-studio/gastonauta)
-
-### Variables de entorno necesarias
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
