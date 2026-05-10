@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const [totalExpenses, setTotalExpenses] = useState(0);
   const [totalIncome, setTotalIncome] = useState(0);
   const [chartLoading, setChartLoading] = useState(true);
-  
+
   // Month filter
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
@@ -78,12 +78,12 @@ export default function DashboardPage() {
 
       // Sort months descending
       const sortedMonths = Array.from(monthsSet).sort((a, b) => b.localeCompare(a));
-      
+
       // Ensure at least Feb 2026 is available
       if (!sortedMonths.includes('2026-02')) {
         sortedMonths.unshift('2026-02');
       }
-      
+
       setAvailableMonths(sortedMonths);
 
       // Set default to current month or latest available
@@ -105,7 +105,7 @@ export default function DashboardPage() {
       const [year, month] = selectedMonth.split('-').map(Number);
       const firstDay = new Date(year, month - 1, 1).toISOString();
       const lastDay = new Date(year, month, 0, 23, 59, 59).toISOString();
-      
+
       // Fetch expenses
       const { data: expenseData, error: expenseError } = await supabase
         .from("transactions")
@@ -114,9 +114,9 @@ export default function DashboardPage() {
         .lte("transaction_date", lastDay)
         .eq("is_expense", true)
         .not("amount", "is", null);
-      
+
       if (expenseError) throw expenseError;
-      
+
       // Fetch income
       const { data: incomeData, error: incomeError } = await supabase
         .from("transactions")
@@ -125,20 +125,20 @@ export default function DashboardPage() {
         .lte("transaction_date", lastDay)
         .eq("is_expense", false)
         .not("amount", "is", null);
-      
+
       if (incomeError) throw incomeError;
-      
+
       const daysInMonth = new Date(year, month, 0).getDate();
       const dailyExpensesMap: { [key: number]: number } = {};
       const dailyIncomeMap: { [key: number]: number } = {};
       let expenseTotal = 0;
       let incomeTotal = 0;
-      
+
       for (let i = 1; i <= daysInMonth; i++) {
         dailyExpensesMap[i] = 0;
         dailyIncomeMap[i] = 0;
       }
-      
+
       expenseData?.forEach(tx => {
         if (tx.transaction_date && tx.amount) {
           const day = new Date(tx.transaction_date).getDate();
@@ -146,7 +146,7 @@ export default function DashboardPage() {
           expenseTotal += tx.amount;
         }
       });
-      
+
       incomeData?.forEach(tx => {
         if (tx.transaction_date && tx.amount) {
           const day = new Date(tx.transaction_date).getDate();
@@ -154,17 +154,17 @@ export default function DashboardPage() {
           incomeTotal += tx.amount;
         }
       });
-      
+
       const expenseResult = Object.entries(dailyExpensesMap).map(([day, amount]) => ({
         day: parseInt(day),
         amount
       }));
-      
+
       const incomeResult = Object.entries(dailyIncomeMap).map(([day, amount]) => ({
         day: parseInt(day),
         amount
       }));
-      
+
       setDailyExpenses(expenseResult);
       setDailyIncome(incomeResult);
       setTotalExpenses(expenseTotal);
@@ -197,23 +197,38 @@ export default function DashboardPage() {
         .select('category_id, amount')
         .gte('transaction_date', startDate)
         .lte('transaction_date', endDate)
-        .eq('is_expense', true);
+        .eq('is_expense', true)
+        .limit(10000);
 
       if (txError) throw txError;
 
       // Calculate totals per category
       const categoryTotals = new Map<string, number>();
-      
+      const categoryNames = new Set<string>();
+      const categoryNamesById = new Map<string, string>();
+
+      allCategories?.forEach(cat => {
+        if (cat.id && cat.name) {
+          categoryNames.add(cat.name);
+          categoryNamesById.set(cat.id, cat.name);
+        }
+      });
+
       // Initialize all categories with 0
       allCategories?.forEach(cat => {
         categoryTotals.set(cat.id, 0);
+        categoryTotals.set(cat.name, 0);
       });
 
       // Sum up amounts per category
       transactions?.forEach(tx => {
         if (tx.category_id && tx.amount) {
-          const current = categoryTotals.get(tx.category_id) || 0;
-          categoryTotals.set(tx.category_id, current + tx.amount);
+          const resolvedCategory = categoryNamesById.get(tx.category_id) || (categoryNames.has(tx.category_id) ? tx.category_id : null);
+
+          if (resolvedCategory) {
+            const current = categoryTotals.get(resolvedCategory) || 0;
+            categoryTotals.set(resolvedCategory, current + tx.amount);
+          }
         }
       });
 
@@ -221,7 +236,7 @@ export default function DashboardPage() {
       const summary: Category[] = allCategories?.map(cat => ({
         id: cat.id,
         name: cat.name,
-        total: categoryTotals.get(cat.id) || 0
+        total: categoryTotals.get(cat.name) || categoryTotals.get(cat.id) || 0
       })) || [];
 
       // Sort by total descending
@@ -258,7 +273,7 @@ export default function DashboardPage() {
       {/* Main content */}
       <main className="flex-1 flex flex-col p-6">
         <h1 className="text-3xl font-serif text-stone-100 mb-6 drop-shadow-[0_2px_16px_rgba(34,211,238,0.7)]">Dashboard</h1>
-        
+
         {/* Month Filter */}
         <div className="flex items-center gap-4 mb-6">
           <div className="relative">
@@ -279,41 +294,56 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Category Summary Panels */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
-          {summaryLoading ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <div 
-                key={i}
-                className="p-4 rounded-xl bg-stone-800/40 border border-stone-600/30 backdrop-blur-xl animate-pulse"
-              >
-                <div className="h-4 bg-stone-700/50 rounded w-24 mb-2"></div>
-                <div className="h-6 bg-stone-700/50 rounded w-32"></div>
-              </div>
-            ))
-          ) : (
-            categorySummary.map((cat) => (
-              <div 
-                key={cat.id}
-                className="p-4 rounded-xl bg-stone-800/40 border border-stone-600/30 backdrop-blur-xl"
-              >
-                <div className="text-xs text-stone-400 uppercase tracking-wider mb-1">{cat.name}</div>
-                <div className={`text-lg font-semibold ${cat.total > 0 ? 'text-cyan-400' : 'text-stone-500'}`}>
-                  {formatAmount(cat.total)}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
         <div className="w-full grid grid-cols-1 gap-8">
+          {/* Gráfico: Gastos por categoría */}
+          <section className="rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border border-stone-300/20 dark:border-stone-700/40 shadow-xl p-6 flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              <span className="text-stone-200 font-sans">Gastos por categoría - {chartMonthLabel}</span>
+            </div>
+            {summaryLoading ? (
+              <div className="flex-1 flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+              </div>
+            ) : categorySummary.filter(c => c.total > 0).length === 0 ? (
+              <div className="flex items-center justify-center text-stone-400 text-sm py-8">
+                No hay gastos registrados este mes
+              </div>
+            ) : (() => {
+              const activeCategories = categorySummary.filter(c => c.total > 0);
+              const maxTotal = Math.max(...activeCategories.map(c => c.total), 1);
+              return (
+                <div className="flex flex-col gap-3">
+                  {activeCategories.map((cat) => {
+                    const barWidth = (cat.total / maxTotal) * 100;
+                    return (
+                      <div key={cat.id} className="flex items-center gap-3 group">
+                        <div className="w-32 text-xs text-stone-400 text-right truncate shrink-0">{cat.name}</div>
+                        <div className="flex-1 h-6 bg-stone-800/60 rounded overflow-hidden relative">
+                          <div
+                            className="h-full rounded bg-linear-to-r from-cyan-500/80 to-cyan-400 transition-all duration-500"
+                            style={{ width: `${barWidth}%` }}
+                          />
+                          <span className="absolute inset-0 flex items-center pl-2 text-[11px] text-stone-100 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            {formatAmount(cat.total)}
+                          </span>
+                        </div>
+                        <div className="w-28 text-xs text-cyan-400 font-semibold shrink-0">{formatAmount(cat.total)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </section>
+
           {/* Gráfico: Ingresos vs Gastos por día */}
           <section className="rounded-2xl bg-white/10 dark:bg-stone-900/40 backdrop-blur-xl border border-stone-300/20 dark:border-stone-700/40 shadow-xl p-6 flex flex-col min-h-[320px]">
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 className="w-5 h-5 text-cyan-400" />
               <span className="text-stone-200 font-sans">Ingresos vs Gastos por día - {chartMonthLabel}</span>
             </div>
-            
+
             {chartLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="w-6 h-6 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
@@ -336,7 +366,7 @@ export default function DashboardPage() {
                     const expenseHeight = maxAmount > 0 ? (expenseAmount / maxAmount) * 100 : 0;
                     const incomeHeight = maxAmount > 0 ? (incomeAmount / maxAmount) * 100 : 0;
                     const isToday = day === new Date().getDate();
-                    
+
                     return (
                       <div
                         key={day}
@@ -357,28 +387,26 @@ export default function DashboardPage() {
                           )}
                           {/* Income bar (green, goes up) */}
                           <div
-                            className={`w-[45%] rounded-t transition-all duration-300 cursor-pointer ${
-                              isToday 
-                                ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' 
-                                : incomeAmount > 0 
-                                  ? 'bg-emerald-400/70 hover:bg-emerald-400' 
-                                  : 'bg-emerald-400/20'
-                            }`}
-                            style={{ 
+                            className={`w-[45%] rounded-t transition-all duration-300 cursor-pointer ${isToday
+                              ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                              : incomeAmount > 0
+                                ? 'bg-emerald-400/70 hover:bg-emerald-400'
+                                : 'bg-emerald-400/20'
+                              }`}
+                            style={{
                               height: `${Math.max(incomeHeight, 2)}%`,
                               minHeight: incomeAmount > 0 ? '2px' : '0'
                             }}
                           />
                           {/* Expense bar (cyan, goes down from income) */}
                           <div
-                            className={`w-[45%] rounded-t transition-all duration-300 cursor-pointer ${
-                              isToday 
-                                ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]' 
-                                : expenseAmount > 0 
-                                  ? 'bg-cyan-400/70 hover:bg-cyan-400/90' 
-                                  : 'bg-cyan-400/20'
-                            }`}
-                            style={{ 
+                            className={`w-[45%] rounded-t transition-all duration-300 cursor-pointer ${isToday
+                              ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]'
+                              : expenseAmount > 0
+                                ? 'bg-cyan-400/70 hover:bg-cyan-400/90'
+                                : 'bg-cyan-400/20'
+                              }`}
+                            style={{
                               height: `${Math.max(expenseHeight, 2)}%`,
                               minHeight: expenseAmount > 0 ? '2px' : '0'
                             }}

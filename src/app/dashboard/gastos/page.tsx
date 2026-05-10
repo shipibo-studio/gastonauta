@@ -220,7 +220,9 @@ export default function GastosPage() {
           .single();
 
         if (categoryData) {
-          query = query.eq('category_id', categoryData.id);
+          query = query.in('category_id', [categoryFilter, categoryData.id]);
+        } else {
+          query = query.eq('category_id', categoryFilter);
         }
       }
 
@@ -398,23 +400,38 @@ export default function GastosPage() {
         .select('category_id, amount')
         .gte('transaction_date', startDate)
         .lte('transaction_date', endDate)
-        .eq('is_expense', true);
+        .eq('is_expense', true)
+        .limit(10000);
 
       if (txError) throw txError;
 
       // Calculate totals per category
       const categoryTotals = new Map<string, number>();
+      const categoryNames = new Set<string>();
+      const categoryNamesById = new Map<string, string>();
+
+      allCategories?.forEach(cat => {
+        if (cat.id && cat.name) {
+          categoryNames.add(cat.name);
+          categoryNamesById.set(cat.id, cat.name);
+        }
+      });
 
       // Initialize all categories with 0
       allCategories?.forEach(cat => {
         categoryTotals.set(cat.id, 0);
+        categoryTotals.set(cat.name, 0);
       });
 
       // Sum up amounts per category
       transactions?.forEach(tx => {
         if (tx.category_id && tx.amount) {
-          const current = categoryTotals.get(tx.category_id) || 0;
-          categoryTotals.set(tx.category_id, current + tx.amount);
+          const resolvedCategory = categoryNamesById.get(tx.category_id) || (categoryNames.has(tx.category_id) ? tx.category_id : null);
+
+          if (resolvedCategory) {
+            const current = categoryTotals.get(resolvedCategory) || 0;
+            categoryTotals.set(resolvedCategory, current + tx.amount);
+          }
         }
       });
 
@@ -422,7 +439,7 @@ export default function GastosPage() {
       const summary: Category[] = allCategories?.map(cat => ({
         id: cat.id,
         name: cat.name,
-        total: categoryTotals.get(cat.id) || 0
+        total: categoryTotals.get(cat.name) || categoryTotals.get(cat.id) || 0
       })) || [];
 
       // Sort by total descending
